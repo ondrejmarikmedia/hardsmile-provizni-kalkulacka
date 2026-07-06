@@ -417,6 +417,16 @@ var DATA = [{
   cnt_mo: 27,
   cnt_vo: 2,
   ad_cost: 97895.05
+}, {
+  month: "2026-06",
+  label: "Červen 2026",
+  rev_new: 0,
+  rev_mo: 0,
+  rev_vo: 0,
+  cnt_new: 0,
+  cnt_mo: 0,
+  cnt_vo: 0,
+  ad_cost: 0
 }];
 var CHANNEL_DATA = [{
   month: "2025-10",
@@ -600,6 +610,9 @@ var DEFAULT_HOURS = [{
 }, {
   month: "2026-05",
   hours: 35
+}, {
+  month: "2026-06",
+  hours: 0
 }];
 var DEFAULT_FIXED_COSTS = [{
   id: 1,
@@ -1036,13 +1049,31 @@ function App() {
     _useState8 = _slicedToArray(_useState7, 2),
     hoursData = _useState8[0],
     setHoursData = _useState8[1];
+  var _useState9 = useState(DATA),
+    _useState10 = _slicedToArray(_useState9, 2),
+    dataRows = _useState10[0],
+    setDataRows = _useState10[1];
+  var _useState11 = useState(DATA.length - 1),
+    _useState12 = _slicedToArray(_useState11, 2),
+    selectedMonth = _useState12[0],
+    setSelectedMonth = _useState12[1];
+  var updateRevField = function updateRevField(idx, field, val) {
+    setDataRows(function (prev) {
+      return prev.map(function (d, i) {
+        if (i !== idx) return d;
+        var copy = Object.assign({}, d);
+        copy[field] = parseFloat(val) || 0;
+        return copy;
+      });
+    });
+  };
   var totalFixed = fixedCosts.reduce(function (s, c) {
     return s + c.amount;
   }, 0);
   var effectiveFixed = includeFixed ? totalFixed : 0;
   var rows = useMemo(function () {
-    return calculate(DATA, includeVoCredits, effectiveFixed);
-  }, [includeVoCredits, effectiveFixed]);
+    return calculate(dataRows, includeVoCredits, effectiveFixed);
+  }, [dataRows, includeVoCredits, effectiveFixed]);
   var totals = useMemo(function () {
     var t = {
       rev_new: 0,
@@ -1337,7 +1368,7 @@ function App() {
       color: "#6b7280",
       marginBottom: 3
     }
-  }, "Provize / Květen 2026"), /*#__PURE__*/React.createElement("div", {
+  }, "Provize / ", rows[rows.length - 1] ? rows[rows.length - 1].label : ""), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 17,
       fontWeight: 700,
@@ -1363,10 +1394,25 @@ function App() {
       gap: 12
     }
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    style: { fontSize: 12, fontWeight: 600, color: "#059669", marginBottom: 4 }
-  }, "Provize za poslední měsíc (Květen 2026)"), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, fontWeight: 600, color: "#059669", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }
+  }, "Provize za ", /*#__PURE__*/React.createElement("select", {
+    value: selectedMonth,
+    onChange: function (e) { setSelectedMonth(parseInt(e.target.value)); },
+    style: { fontSize: 12, fontWeight: 700, color: "#059669", border: "1px solid #059669", borderRadius: 6, padding: "2px 6px", backgroundColor: "#fff", cursor: "pointer" }
+  }, rows.map(function (r, idx) {
+    return /*#__PURE__*/React.createElement("option", { key: r.month, value: idx }, r.label);
+  }))), /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 26, fontWeight: 800, color: "#059669" }
-  }, fmt(rows[rows.length - 1] ? rows[rows.length - 1].provize : 0), " Kč"))), /*#__PURE__*/React.createElement("div", {
+  }, fmt(rows[selectedMonth] ? rows[selectedMonth].provize : 0), " Kč"), /*#__PURE__*/React.createElement("div", {
+    style: { marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }
+  }, [{ f: "rev_new", l: "Obrat NEW" }, { f: "rev_mo", l: "Obrat MO" }, { f: "rev_vo", l: "Obrat VO" }, { f: "cnt_new", l: "Počet NEW" }, { f: "cnt_mo", l: "Počet MO" }, { f: "cnt_vo", l: "Počet VO" }].map(function (fld) {
+    return /*#__PURE__*/React.createElement("label", { key: fld.f, style: { display: "flex", flexDirection: "column", fontSize: 10, color: "#047857", gap: 2 } }, fld.l, /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      value: dataRows[selectedMonth] ? dataRows[selectedMonth][fld.f] : 0,
+      onChange: function (e) { updateRevField(selectedMonth, fld.f, e.target.value); },
+      style: { width: 90, fontSize: 12, padding: "3px 6px", border: "1px solid #a7f3d0", borderRadius: 5 }
+    }));
+  })))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 24
     }
@@ -2242,8 +2288,15 @@ async function loadFromSheets() {
     }
   });
 
-  // DATA.ad_cost se nemění - hardcoded hodnoty jsou autoritativní pro výpočty provizí
-  var newData = DATA;
+  // Historické měsíce mají hardcoded ad_cost (autoritativní). Měsíce s ad_cost===0
+  // (např. nové měsíce jako červen) doplní live součet ze sheetu.
+  var newData = DATA.map(function(d) {
+    if (d.ad_cost && d.ad_cost > 0) return d;
+    var ad = adByMonth[d.month];
+    if (!ad) return d;
+    var adTotal = ad.facebook.cost + ad.google.cost + ad.seznam.cost + ad.srovname.cost;
+    return Object.assign({}, d, { ad_cost: adTotal });
+  });
 
   var newChannelData = DATA.map(function(d) {
     var ym = d.month;
