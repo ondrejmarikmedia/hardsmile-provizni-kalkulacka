@@ -337,16 +337,45 @@ var _React = React,
   useMemo = _React.useMemo,
   useEffect = _React.useEffect,
   Fragment = _React.Fragment;
-// ===== Perzistence úprav (localStorage) =====
+// ===== Perzistence úprav =====
+// Sdílené úložiště (Google Apps Script). Prázdné = jen lokálně (localStorage).
+// Sem vlož URL nasazeného Apps Scriptu (…/exec).
+var SHARED_STORE_URL = "";
 var LS_KEY = "hardsmile_calc_v1";
 function loadStore() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; }
+}
+var _pushTimer = null;
+// Odešle celý stav do sdíleného úložiště (debounced, POST text/plain kvůli CORS bez preflightu).
+function pushShared() {
+  if (!SHARED_STORE_URL) return;
+  if (_pushTimer) clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(function () {
+    try {
+      fetch(SHARED_STORE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(loadStore())
+      });
+    } catch (e) {}
+  }, 800);
 }
 function saveStore(patch) {
   try {
     var cur = loadStore();
     localStorage.setItem(LS_KEY, JSON.stringify(Object.assign(cur, patch)));
   } catch (e) {}
+  pushShared();
+}
+// Při startu načte sdílený stav a uloží ho do localStorage cache (App ho pak čte synchronně).
+async function loadSharedIntoCache() {
+  if (!SHARED_STORE_URL) return;
+  try {
+    var shared = await fetch(SHARED_STORE_URL, { method: "GET" }).then(function (r) { return r.json(); });
+    if (shared && typeof shared === "object" && Object.keys(shared).length) {
+      localStorage.setItem(LS_KEY, JSON.stringify(shared));
+    }
+  } catch (e) { console.warn("Nelze načíst sdílená data:", e); }
 }
 // Sestaví data měsíců s uloženými úpravami obratů/počtů (ad_cost zůstává čerstvý ze sheetu).
 function buildDataRows(store) {
@@ -2384,6 +2413,7 @@ async function loadFromSheets() {
   } catch(e) {
     console.warn("Nelze načíst Google Sheets, používám záložní data:", e);
   }
+  await loadSharedIntoCache();
   ReactDOM.render(/*#__PURE__*/React.createElement(App, null), document.getElementById("root"));
   var overlay = document.getElementById("gs-loading");
   if (overlay) overlay.parentNode.removeChild(overlay);
