@@ -335,7 +335,35 @@ function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e 
 var _React = React,
   useState = _React.useState,
   useMemo = _React.useMemo,
+  useEffect = _React.useEffect,
   Fragment = _React.Fragment;
+// ===== Perzistence úprav (localStorage) =====
+var LS_KEY = "hardsmile_calc_v1";
+function loadStore() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveStore(patch) {
+  try {
+    var cur = loadStore();
+    localStorage.setItem(LS_KEY, JSON.stringify(Object.assign(cur, patch)));
+  } catch (e) {}
+}
+// Sestaví data měsíců s uloženými úpravami obratů/počtů (ad_cost zůstává čerstvý ze sheetu).
+function buildDataRows(store) {
+  var rev = store.rev || {};
+  return DATA.map(function (d) {
+    var o = rev[d.month];
+    return o ? Object.assign({}, d, o) : d;
+  });
+}
+// Sestaví hodiny zarovnané na měsíce v DATA (uložené hodnoty přepisují výchozí).
+function buildHours(store) {
+  var map = store.hours || {};
+  return DATA.map(function (d) {
+    var def = DEFAULT_HOURS.find(function (h) { return h.month === d.month; });
+    return { month: d.month, hours: map[d.month] != null ? map[d.month] : (def ? def.hours : 0) };
+  });
+}
 var DATA = [{
   month: "2025-10",
   label: "Říjen 2025",
@@ -388,15 +416,14 @@ var DATA = [{
   ad_cost: 99722.72
 }, {
   month: "2026-03",
-  label: "Březen 2026 *",
+  label: "Březen 2026",
   rev_new: 268682.63,
   rev_mo: 49423.55,
   rev_vo: 5497.50 + 80544.64,
   cnt_new: 258,
   cnt_mo: 32,
   cnt_vo: 2,
-  ad_cost: 128272.27,
-  note: "* vč. B2B obj. 97 459 Kč s DPH (80 545 bez DPH) — storno v systému, VO"
+  ad_cost: 128272.27
 }, {
   month: "2026-04",
   label: "Duben 2026",
@@ -1061,15 +1088,16 @@ function App() {
     _useState4 = _slicedToArray(_useState3, 2),
     includeFixed = _useState4[0],
     setIncludeFixed = _useState4[1];
-  var _useState5 = useState(DEFAULT_FIXED_COSTS),
+  var _store0 = loadStore();
+  var _useState5 = useState(_store0.fixedCosts || DEFAULT_FIXED_COSTS),
     _useState6 = _slicedToArray(_useState5, 2),
     fixedCosts = _useState6[0],
     setFixedCosts = _useState6[1];
-  var _useState7 = useState(DEFAULT_HOURS),
+  var _useState7 = useState(buildHours(_store0)),
     _useState8 = _slicedToArray(_useState7, 2),
     hoursData = _useState8[0],
     setHoursData = _useState8[1];
-  var _useState9 = useState(DATA),
+  var _useState9 = useState(buildDataRows(_store0)),
     _useState10 = _slicedToArray(_useState9, 2),
     dataRows = _useState10[0],
     setDataRows = _useState10[1];
@@ -1077,6 +1105,20 @@ function App() {
     _useState12 = _slicedToArray(_useState11, 2),
     selectedMonth = _useState12[0],
     setSelectedMonth = _useState12[1];
+  // Automatické ukládání úprav do prohlížeče (localStorage).
+  useEffect(function () { saveStore({ fixedCosts: fixedCosts }); }, [fixedCosts]);
+  useEffect(function () {
+    var map = {};
+    hoursData.forEach(function (h) { map[h.month] = h.hours; });
+    saveStore({ hours: map });
+  }, [hoursData]);
+  useEffect(function () {
+    var rev = {};
+    dataRows.forEach(function (d) {
+      rev[d.month] = { rev_new: d.rev_new, rev_mo: d.rev_mo, rev_vo: d.rev_vo, cnt_new: d.cnt_new, cnt_mo: d.cnt_mo, cnt_vo: d.cnt_vo };
+    });
+    saveStore({ rev: rev });
+  }, [dataRows]);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
       return prev.map(function (d, i) {
