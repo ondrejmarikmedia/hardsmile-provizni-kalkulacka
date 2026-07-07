@@ -673,6 +673,7 @@ var DEFAULT_HOURS = [{
   month: "2026-06",
   hours: 0
 }];
+// Základní (výchozí) sada fixních nákladů – platí pro měsíce bez vlastního nastavení.
 var DEFAULT_FIXED_COSTS = [{
   id: 1,
   name: "B2Metrics",
@@ -680,16 +681,9 @@ var DEFAULT_FIXED_COSTS = [{
   category: "Marketingové nástroje"
 }, {
   id: 2,
-  name: "Ecomail (do 5/2026)",
+  name: "Ecomail",
   amount: 847,
-  category: "Marketingové nástroje",
-  to: "2026-05"
-}, {
-  id: 6,
-  name: "Ecomail (od 6/2026)",
-  amount: 1743,
-  category: "Marketingové nástroje",
-  from: "2026-06"
+  category: "Marketingové nástroje"
 }, {
   id: 3,
   name: "Shoptet",
@@ -706,15 +700,36 @@ var DEFAULT_FIXED_COSTS = [{
   amount: 645.41,
   category: "Marketingové nástroje"
 }];
+// Přepisy fixních nákladů pro konkrétní měsíce. Měsíc bez záznamu dědí z nejbližšího
+// dřívějšího měsíce s vlastním nastavením, jinak z DEFAULT_FIXED_COSTS.
+// Zde: od června 2026 je Ecomail 1743 místo 847.
+var DEFAULT_FIXED_BY_MONTH = {
+  "2026-06": [
+    { id: 1, name: "B2Metrics", amount: 750, category: "Marketingové nástroje" },
+    { id: 2, name: "Ecomail", amount: 1743, category: "Marketingové nástroje" },
+    { id: 3, name: "Shoptet", amount: 5000, category: "Provozní SW" },
+    { id: 4, name: "Repetiv", amount: 1323.6, category: "Marketingové nástroje" },
+    { id: 5, name: "Retino", amount: 645.41, category: "Marketingové nástroje" }
+  ]
+};
 var CATEGORIES = ["Marketingové nástroje", "Provozní SW", "Obecné"];
 var MARGIN = 0.70;
 var COMMISSION_RATE = 0.40;
-// Součet fixních nákladů platných pro daný měsíc (respektuje from/to na položkách).
-function fixedForMonth(list, month) {
-  return list.reduce(function (s, c) {
-    if (c.from && month < c.from) return s;
-    if (c.to && month > c.to) return s;
-    return s + c.amount;
+// Vrátí seznam fixních položek platný pro daný měsíc (dědí dopředu z dřívějšího měsíce).
+function getFixedList(fixedByMonth, month) {
+  if (fixedByMonth && fixedByMonth[month]) return fixedByMonth[month];
+  var best = null;
+  if (fixedByMonth) {
+    Object.keys(fixedByMonth).forEach(function (k) {
+      if (k <= month && (best === null || k > best)) best = k;
+    });
+  }
+  return best ? fixedByMonth[best] : DEFAULT_FIXED_COSTS;
+}
+// Součet fixních nákladů platný pro daný měsíc.
+function fixedForMonth(fixedByMonth, month) {
+  return getFixedList(fixedByMonth, month).reduce(function (s, c) {
+    return s + (parseFloat(c.amount) || 0);
   }, 0);
 }
 var fmt = function fmt(n) {
@@ -935,12 +950,10 @@ function BarSegment(_ref3) {
 function FixedCostEditor(_ref4) {
   var costs = _ref4.costs,
     onChange = _ref4.onChange,
-    month = _ref4.month;
-  // Celkem počítá jen položky platné pro aktuální měsíc (respektuje from/to).
+    month = _ref4.month,
+    monthLabel = _ref4.monthLabel;
   var total = costs.reduce(function (s, c) {
-    if (month && c.from && month < c.from) return s;
-    if (month && c.to && month > c.to) return s;
-    return s + c.amount;
+    return s + (parseFloat(c.amount) || 0);
   }, 0);
   var updateCost = function updateCost(id, field, value) {
     onChange(costs.map(function (c) {
@@ -994,13 +1007,13 @@ function FixedCostEditor(_ref4) {
       color: "#374151",
       margin: 0
     }
-  }, "Fixn\xED m\u011Bs\xED\u010Dn\xED n\xE1klady"), /*#__PURE__*/React.createElement("p", {
+  }, "Fixn\xED n\xE1klady \u2014 ", monthLabel || month), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       color: "#6b7280",
       margin: "2px 0 0"
     }
-  }, "Nemarketingov\xE9 n\xE1klady d\u011Blen\xE9 vlastn\xEDm pom\u011Brem obratu (NEW+MO+VO)")), /*#__PURE__*/React.createElement("div", {
+  }, "Nastaveno pro tento m\u011Bs\xEDc; plat\xED i pro dal\u0161\xED m\u011Bs\xEDce, dokud je nezm\u011Bn\xED\u0161. M\u011Bs\xEDc p\u0159epni naho\u0159e u \u201EProvize za\u201C.")), /*#__PURE__*/React.createElement("div", {
     style: {
       backgroundColor: "#fef3c7",
       border: "1px solid #f59e0b",
@@ -1121,10 +1134,10 @@ function App() {
     includeFixed = _useState4[0],
     setIncludeFixed = _useState4[1];
   var _store0 = loadStore();
-  var _useState5 = useState(_store0.fixedCosts || DEFAULT_FIXED_COSTS),
+  var _useState5 = useState(_store0.fixedByMonth || DEFAULT_FIXED_BY_MONTH),
     _useState6 = _slicedToArray(_useState5, 2),
-    fixedCosts = _useState6[0],
-    setFixedCosts = _useState6[1];
+    fixedByMonth = _useState6[0],
+    setFixedByMonth = _useState6[1];
   var _useState7 = useState(buildHours(_store0)),
     _useState8 = _slicedToArray(_useState7, 2),
     hoursData = _useState8[0],
@@ -1140,7 +1153,7 @@ function App() {
   // Automatické ukládání jen při skutečné úpravě (ne při prvním načtení),
   // aby se sdílená data nepřepsala výchozími, když se načtení nezdaří.
   var _didMount = useRef(false);
-  useEffect(function () { if (!_didMount.current) return; saveStore({ fixedCosts: fixedCosts }); }, [fixedCosts]);
+  useEffect(function () { if (!_didMount.current) return; saveStore({ fixedByMonth: fixedByMonth }); }, [fixedByMonth]);
   useEffect(function () {
     if (!_didMount.current) return;
     var map = {};
@@ -1167,18 +1180,30 @@ function App() {
     });
   };
   var lastMonth = dataRows.length ? dataRows[dataRows.length - 1].month : "";
-  // Fixní náklady aktuálního (posledního) měsíce – respektuje from/to na položkách.
-  var totalFixed = fixedForMonth(fixedCosts, lastMonth);
-  // Skutečný součet fixních nákladů přes všechny měsíce (mění-li se v čase).
+  var selectedMonthStr = dataRows[selectedMonth] ? dataRows[selectedMonth].month : lastMonth;
+  var selectedMonthLabel = dataRows[selectedMonth] ? dataRows[selectedMonth].label : "";
+  // Seznam fixních nákladů právě editovaného měsíce (s děděním dopředu).
+  var currentFixedList = getFixedList(fixedByMonth, selectedMonthStr);
+  // Uloží upravený seznam fixních nákladů pro vybraný měsíc.
+  var updateFixedForMonth = function updateFixedForMonth(newList) {
+    setFixedByMonth(function (prev) {
+      var next = Object.assign({}, prev);
+      next[selectedMonthStr] = newList;
+      return next;
+    });
+  };
+  // Fixní náklady aktuálního (posledního) měsíce.
+  var totalFixed = fixedForMonth(fixedByMonth, lastMonth);
+  // Skutečný součet fixních nákladů přes všechny měsíce.
   var totalFixedPeriod = dataRows.reduce(function (s, m) {
-    return s + fixedForMonth(fixedCosts, m.month);
+    return s + fixedForMonth(fixedByMonth, m.month);
   }, 0);
   var effectiveFixedFn = function effectiveFixedFn(month) {
-    return includeFixed ? fixedForMonth(fixedCosts, month) : 0;
+    return includeFixed ? fixedForMonth(fixedByMonth, month) : 0;
   };
   var rows = useMemo(function () {
     return calculate(dataRows, includeVoCredits, effectiveFixedFn);
-  }, [dataRows, includeVoCredits, fixedCosts, includeFixed]);
+  }, [dataRows, includeVoCredits, fixedByMonth, includeFixed]);
   var totals = useMemo(function () {
     var t = {
       rev_new: 0,
@@ -1732,7 +1757,7 @@ function App() {
       style: _objectSpread(_objectSpread({}, cellBase), {}, {
         color: "#b45309"
       })
-    }, fmt(fixedForMonth(fixedCosts, r.month))), /*#__PURE__*/React.createElement("td", {
+    }, fmt(fixedForMonth(fixedByMonth, r.month))), /*#__PURE__*/React.createElement("td", {
       style: cellBase
     }, fmtPct(r.creditShare)), /*#__PURE__*/React.createElement("td", {
       style: _objectSpread(_objectSpread({}, cellBase), {}, {
@@ -1823,16 +1848,6 @@ function App() {
   }, fmt(totals.provize), " K\u010D"))))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 12,
-      padding: "10px 16px",
-      backgroundColor: "#fffbeb",
-      borderRadius: 8,
-      border: "1px solid #fbbf24",
-      fontSize: 12,
-      color: "#92400e"
-    }
-  }, "* B\u0159ezen 2026 zahrnuje B2B objedn\xE1vku 97 459 K\u010D s DPH (74 455 K\u010D bez DPH) \u2014 v syst\xE9mu ve stornu, ale zapo\u010D\xEDtan\xE1 do provize."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12,
       padding: "14px 18px",
       backgroundColor: "#f8fafc",
       borderRadius: 10,
@@ -1841,8 +1856,8 @@ function App() {
       color: "#4b5563",
       lineHeight: 1.8
     }
-  }, /*#__PURE__*/React.createElement("strong", null, "Vzorec:"), /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " = NEW / (NEW + MO", includeVoCredits ? " + VO" : "", ") \u2014 VO ", includeVoCredits ? "ponižuje" : "vyloučeno", /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " = NEW / (NEW + MO + VO) \u2014 v\u017Edy v\u010D. VO", /*#__PURE__*/React.createElement("br", null), "Kredity\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " \xD7 Ad costs | Fixn\xED\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " \xD7 Fixn\xED N", /*#__PURE__*/React.createElement("br", null), "Provize = 40% \xD7 (Obrat", /*#__PURE__*/React.createElement("sub", null, "NEW"), " \xD7 70% \u2212 Kredity\u2192NEW \u2212 Fixn\xED\u2192NEW)", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("strong", null, "Skupiny:"), " a) NEW \u2192 provize | b) MO \u2192 poni\u017Euje kredity i fixn\xED N | c) VO \u2192 ", includeVoCredits ? "ponižuje kredity i fixní N" : "ponižuje pouze fixní N", " | Fixn\xED N: ", includeFixed ? fixedCosts.filter(function (c) {
-    return c.amount > 0 && (!c.from || lastMonth >= c.from) && (!c.to || lastMonth <= c.to);
+  }, /*#__PURE__*/React.createElement("strong", null, "Vzorec:"), /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " = NEW / (NEW + MO", includeVoCredits ? " + VO" : "", ") \u2014 VO ", includeVoCredits ? "ponižuje" : "vyloučeno", /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " = NEW / (NEW + MO + VO) \u2014 v\u017Edy v\u010D. VO", /*#__PURE__*/React.createElement("br", null), "Kredity\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " \xD7 Ad costs | Fixn\xED\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " \xD7 Fixn\xED N", /*#__PURE__*/React.createElement("br", null), "Provize = 40% \xD7 (Obrat", /*#__PURE__*/React.createElement("sub", null, "NEW"), " \xD7 70% \u2212 Kredity\u2192NEW \u2212 Fixn\xED\u2192NEW)", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("strong", null, "Skupiny:"), " a) NEW \u2192 provize | b) MO \u2192 poni\u017Euje kredity i fixn\xED N | c) VO \u2192 ", includeVoCredits ? "ponižuje kredity i fixní N" : "ponižuje pouze fixní N", " | Fixn\xED N: ", includeFixed ? getFixedList(fixedByMonth, lastMonth).filter(function (c) {
+    return c.amount > 0;
   }).map(function (c) {
     return c.name + " " + fmt(c.amount);
   }).join(" + ") + " = " + fmt(totalFixed) + " Kč/měs" : "vypnuto"), function () {
@@ -2325,9 +2340,10 @@ function App() {
       }]
     }))));
   }(), /*#__PURE__*/React.createElement(FixedCostEditor, {
-    costs: fixedCosts,
-    onChange: setFixedCosts,
-    month: lastMonth
+    costs: currentFixedList,
+    onChange: updateFixedForMonth,
+    month: selectedMonthStr,
+    monthLabel: selectedMonthLabel
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
