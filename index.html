@@ -336,11 +336,12 @@ var _React = React,
   useState = _React.useState,
   useMemo = _React.useMemo,
   useEffect = _React.useEffect,
+  useRef = _React.useRef,
   Fragment = _React.Fragment;
 // ===== Perzistence úprav =====
 // Sdílené úložiště (Google Apps Script). Prázdné = jen lokálně (localStorage).
 // Sem vlož URL nasazeného Apps Scriptu (…/exec).
-var SHARED_STORE_URL = "https://script.google.com/macros/s/AKfycbxIy-3sScjYmeit1fAxm9KvjRMan2HvOjKuIu77uHiS7fAxkdeOhIIndcrwFfneN77m/exec";
+var SHARED_STORE_URL = "https://script.google.com/macros/s/AKfycbwoWn_QdurUVwl8DI7KLJhxVEWIKYMvAUPybrSSGGh5eu_sr24Hud9qezCuNYnVc8Q5/exec";
 var LS_KEY = "hardsmile_calc_v1";
 function loadStore() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; }
@@ -369,33 +370,15 @@ function saveStore(patch) {
   } catch (e) {}
   pushShared();
 }
-// Při startu načte sdílený stav přes JSONP (obejde CORS) a uloží do localStorage cache.
-function loadSharedIntoCache() {
-  return new Promise(function (resolve) {
-    if (!SHARED_STORE_URL) return resolve();
-    var cbName = "__hsCb_" + Date.now();
-    var s = document.createElement("script");
-    var done = false;
-    function cleanup() {
-      try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
-      if (s.parentNode) s.parentNode.removeChild(s);
-      clearTimeout(timer);
+// Při startu načte sdílený stav (fetch GET) a uloží do localStorage cache (App ho čte synchronně).
+async function loadSharedIntoCache() {
+  if (!SHARED_STORE_URL) return;
+  try {
+    var shared = await fetch(SHARED_STORE_URL).then(function (r) { return r.json(); });
+    if (shared && typeof shared === "object" && Object.keys(shared).length) {
+      localStorage.setItem(LS_KEY, JSON.stringify(shared));
     }
-    var timer = setTimeout(function () { if (!done) { done = true; cleanup(); resolve(); } }, 8000);
-    window[cbName] = function (data) {
-      done = true;
-      try {
-        if (data && typeof data === "object" && Object.keys(data).length) {
-          localStorage.setItem(LS_KEY, JSON.stringify(data));
-        }
-      } catch (e) {}
-      cleanup();
-      resolve();
-    };
-    s.onerror = function () { if (!done) { done = true; cleanup(); resolve(); } };
-    s.src = SHARED_STORE_URL + (SHARED_STORE_URL.indexOf("?") >= 0 ? "&" : "?") + "callback=" + cbName;
-    document.head.appendChild(s);
-  });
+  } catch (e) { console.warn("Nelze načíst sdílená data:", e); }
 }
 // Sestaví data měsíců s uloženými úpravami obratů/počtů (ad_cost zůstává čerstvý ze sheetu).
 function buildDataRows(store) {
@@ -1154,20 +1137,25 @@ function App() {
     _useState12 = _slicedToArray(_useState11, 2),
     selectedMonth = _useState12[0],
     setSelectedMonth = _useState12[1];
-  // Automatické ukládání úprav do prohlížeče (localStorage).
-  useEffect(function () { saveStore({ fixedCosts: fixedCosts }); }, [fixedCosts]);
+  // Automatické ukládání jen při skutečné úpravě (ne při prvním načtení),
+  // aby se sdílená data nepřepsala výchozími, když se načtení nezdaří.
+  var _didMount = useRef(false);
+  useEffect(function () { if (!_didMount.current) return; saveStore({ fixedCosts: fixedCosts }); }, [fixedCosts]);
   useEffect(function () {
+    if (!_didMount.current) return;
     var map = {};
     hoursData.forEach(function (h) { map[h.month] = h.hours; });
     saveStore({ hours: map });
   }, [hoursData]);
   useEffect(function () {
+    if (!_didMount.current) return;
     var rev = {};
     dataRows.forEach(function (d) {
       rev[d.month] = { rev_new: d.rev_new, rev_mo: d.rev_mo, rev_vo: d.rev_vo, cnt_new: d.cnt_new, cnt_mo: d.cnt_mo, cnt_vo: d.cnt_vo };
     });
     saveStore({ rev: rev });
   }, [dataRows]);
+  useEffect(function () { _didMount.current = true; }, []);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
       return prev.map(function (d, i) {
