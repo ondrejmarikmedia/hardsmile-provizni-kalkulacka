@@ -1144,6 +1144,81 @@ function FixedCostEditor(_ref4) {
     }
   }, "+ P\u0159idat polo\u017Eku"));
 }
+function VoEditor(_ref5) {
+  var emails = _ref5.emails,
+    onChange = _ref5.onChange;
+  var _u1 = useState(false), _u1a = _slicedToArray(_u1, 2), unlocked = _u1a[0], setUnlocked = _u1a[1];
+  var _u2 = useState(""), _u2a = _slicedToArray(_u2, 2), pw = _u2a[0], setPw = _u2a[1];
+  var _u3 = useState(""), _u3a = _slicedToArray(_u3, 2), newEmail = _u3a[0], setNewEmail = _u3a[1];
+  var _u4 = useState(false), _u4a = _slicedToArray(_u4, 2), open = _u4a[0], setOpen = _u4a[1];
+  var box = {
+    backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10,
+    padding: "16px 20px", marginBottom: 24
+  };
+  var addEmail = function addEmail() {
+    var e = (newEmail || "").trim().toLowerCase();
+    if (!e) return;
+    if (emails.indexOf(e) === -1) onChange([].concat(_toConsumableArray(emails), [e]));
+    setNewEmail("");
+  };
+  var removeEmail = function removeEmail(e) {
+    onChange(emails.filter(function (x) { return x !== e; }));
+  };
+  // Zabalený stav – jen tlačítko pro otevření
+  if (!open) {
+    return /*#__PURE__*/React.createElement("div", { style: box }, /*#__PURE__*/React.createElement("button", {
+      onClick: function () { setOpen(true); },
+      style: { border: "none", background: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#374151", padding: 0 }
+    }, "🔒 Seznam VO z\xE1kazn\xEDků (chr\xE1něno heslem)"));
+  }
+  // Otevřeno, ale zamčeno – vyžádej heslo
+  if (!unlocked) {
+    return /*#__PURE__*/React.createElement("div", { style: box },
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 10 } }, "🔒 Seznam VO z\xE1kazn\xEDků — zadej heslo"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+        /*#__PURE__*/React.createElement("input", {
+          type: "password", value: pw, placeholder: "Heslo",
+          onChange: function (e) { setPw(e.target.value); },
+          onKeyDown: function (e) { if (e.key === "Enter") { if (pw === "Hardsmile01") setUnlocked(true); } },
+          style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 }
+        }),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: function () { if (pw === "Hardsmile01") setUnlocked(true); else alert("Špatn\xE9 heslo"); },
+          style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" }
+        }, "Odemknout"),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: function () { setOpen(false); setPw(""); },
+          style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280" }
+        }, "Zavř\xEDt")
+      )
+    );
+  }
+  // Odemčeno – seznam + přidávání
+  return /*#__PURE__*/React.createElement("div", { style: box },
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151" } }, "🔓 Seznam VO z\xE1kazn\xEDků"),
+      /*#__PURE__*/React.createElement("button", { onClick: function () { setUnlocked(false); setOpen(false); setPw(""); }, style: { border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280", padding: "4px 10px", fontSize: 12 } }, "Zamknout")
+    ),
+    /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "E-maily zde uveden\xE9 se od června 2026 poč\xEDtaj\xED jako velkoobchod (VO). Změna se projev\xED po obnoven\xED str\xE1nky."),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      /*#__PURE__*/React.createElement("input", {
+        type: "email", value: newEmail, placeholder: "email@zakaznik.cz",
+        onChange: function (e) { setNewEmail(e.target.value); },
+        onKeyDown: function (e) { if (e.key === "Enter") addEmail(); },
+        style: { flex: 1, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 }
+      }),
+      /*#__PURE__*/React.createElement("button", { onClick: addEmail, style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" } }, "Přidat")
+    ),
+    emails.length === 0
+      ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af" } }, "Zat\xEDm ž\xE1dn\xE9 ručně přidan\xE9 VO e-maily. (VO skupiny ze Shoptetu se pozn\xE1vaj\xED automaticky.)")
+      : /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, emails.map(function (e) {
+          return /*#__PURE__*/React.createElement("div", { key: e, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", backgroundColor: "#f9fafb", borderRadius: 6, fontSize: 13 } },
+            /*#__PURE__*/React.createElement("span", null, e),
+            /*#__PURE__*/React.createElement("button", { onClick: function () { removeEmail(e); }, style: { border: "none", background: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 } }, "\xD7")
+          );
+        }))
+  );
+}
 function App() {
   var _useState = useState(false),
     _useState2 = _slicedToArray(_useState, 2),
@@ -1170,6 +1245,10 @@ function App() {
     _useState12 = _slicedToArray(_useState11, 2),
     selectedMonth = _useState12[0],
     setSelectedMonth = _useState12[1];
+  var _useState13 = useState(_store0.voEmails || []),
+    _useState14 = _slicedToArray(_useState13, 2),
+    voEmails = _useState14[0],
+    setVoEmails = _useState14[1];
   // Automatické ukládání jen při skutečné úpravě (ne při prvním načtení),
   // aby se sdílená data nepřepsala výchozími, když se načtení nezdaří.
   var _didMount = useRef(false);
@@ -1180,6 +1259,7 @@ function App() {
     hoursData.forEach(function (h) { map[h.month] = h.hours; });
     saveStore({ hours: map });
   }, [hoursData]);
+  useEffect(function () { if (!_didMount.current) return; saveStore({ voEmails: voEmails }); }, [voEmails]);
   useEffect(function () { _didMount.current = true; }, []);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
@@ -2356,6 +2436,9 @@ function App() {
     onChange: updateFixedForMonth,
     month: selectedMonthStr,
     monthLabel: selectedMonthLabel
+  }), /*#__PURE__*/React.createElement(VoEditor, {
+    emails: voEmails,
+    onChange: setVoEmails
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",

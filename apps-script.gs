@@ -33,6 +33,8 @@ function doPost(e) {
     var body = (e && e.postData && e.postData.contents) || "{}";
     JSON.parse(body);
     PropertiesService.getScriptProperties().setProperty("STATE", body);
+    // Ruční VO seznam se mohl změnit → zneplatni cache agregace, ať se hned projeví.
+    try { CacheService.getScriptCache().remove("ORDERS_AGG"); } catch (ce) {}
     return ContentService.createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -82,8 +84,19 @@ function loadSeznam() {
   return set;
 }
 
+// Ruční seznam VO e-mailů uložený v STATE (přidané přes chráněný panel v aplikaci).
+function loadManualVO() {
+  var set = {};
+  try {
+    var state = JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}");
+    (state.voEmails || []).forEach(function (e) { set[String(e).trim().toLowerCase()] = true; });
+  } catch (e) {}
+  return set;
+}
+
 function computeOrdersAgg() {
   var seznam = loadSeznam();
+  var voManual = loadManualVO();
   var resp = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true });
   var text = resp.getContentText("windows-1250");
   var lines = text.split(/\r?\n/);
@@ -117,7 +130,7 @@ function computeOrdersAgg() {
     if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0 };
     // VO = velkoobchodní typ skupiny NEBO název skupiny "VO…"/"Velkoobchod…"
     // (Shoptet u skupin VO 10/30/35 chybně vrací typ Retail, proto i podle názvu).
-    var isVO = o.grpType === "customerGroupTypeWholesale" || /^VO/i.test(o.grpName) || /elkoobchod/.test(o.grpName);
+    var isVO = o.grpType === "customerGroupTypeWholesale" || /^VO/i.test(o.grpName) || /elkoobchod/.test(o.grpName) || voManual[o.email];
     if (isVO) {
       agg[ym].rev_vo += o.price; agg[ym].cnt_vo++;
     } else if (seznam[o.email]) {
