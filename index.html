@@ -380,6 +380,26 @@ async function loadSharedIntoCache() {
     }
   } catch (e) { console.warn("Nelze načíst sdílená data:", e); }
 }
+// Od tohoto měsíce (včetně) se obrat počítá živě ze Shoptetu; starší měsíce zůstávají ruční.
+var SHOPTET_LIVE_FROM = "2026-06";
+// Načte živý obrat ze Shoptetu (přes Apps Script) a přepíše jím DATA pro měsíce >= SHOPTET_LIVE_FROM.
+async function loadShoptetRevenue() {
+  if (!SHARED_STORE_URL) return;
+  try {
+    var agg = await fetch(SHARED_STORE_URL + (SHARED_STORE_URL.indexOf("?") >= 0 ? "&" : "?") + "orders=1")
+      .then(function (r) { return r.json(); });
+    if (!agg || typeof agg !== "object") return;
+    DATA = DATA.map(function (d) {
+      if (d.month < SHOPTET_LIVE_FROM) return d;
+      var o = agg[d.month];
+      if (!o || typeof o.rev_new !== "number") return d;
+      return Object.assign({}, d, {
+        rev_new: o.rev_new, rev_mo: o.rev_mo, rev_vo: o.rev_vo,
+        cnt_new: o.cnt_new, cnt_mo: o.cnt_mo, cnt_vo: o.cnt_vo
+      });
+    });
+  } catch (e) { console.warn("Nelze načíst obrat ze Shoptetu:", e); }
+}
 // Sestaví data měsíců s uloženými úpravami obratů/počtů (ad_cost zůstává čerstvý ze sheetu).
 function buildDataRows(store) {
   var rev = store.rev || {};
@@ -1142,7 +1162,7 @@ function App() {
     _useState8 = _slicedToArray(_useState7, 2),
     hoursData = _useState8[0],
     setHoursData = _useState8[1];
-  var _useState9 = useState(buildDataRows(_store0)),
+  var _useState9 = useState(DATA),
     _useState10 = _slicedToArray(_useState9, 2),
     dataRows = _useState10[0],
     setDataRows = _useState10[1];
@@ -1160,14 +1180,6 @@ function App() {
     hoursData.forEach(function (h) { map[h.month] = h.hours; });
     saveStore({ hours: map });
   }, [hoursData]);
-  useEffect(function () {
-    if (!_didMount.current) return;
-    var rev = {};
-    dataRows.forEach(function (d) {
-      rev[d.month] = { rev_new: d.rev_new, rev_mo: d.rev_mo, rev_vo: d.rev_vo, cnt_new: d.cnt_new, cnt_mo: d.cnt_mo, cnt_vo: d.cnt_vo };
-    });
-    saveStore({ rev: rev });
-  }, [dataRows]);
   useEffect(function () { _didMount.current = true; }, []);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
@@ -2437,6 +2449,7 @@ async function loadFromSheets() {
   } catch(e) {
     console.warn("Nelze načíst Google Sheets, používám záložní data:", e);
   }
+  await loadShoptetRevenue();
   await loadSharedIntoCache();
   ReactDOM.render(/*#__PURE__*/React.createElement(App, null), document.getElementById("root"));
   var overlay = document.getElementById("gs-loading");
