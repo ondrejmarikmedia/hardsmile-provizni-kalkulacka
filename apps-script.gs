@@ -11,10 +11,17 @@
  *   4. Zkopíruj URL nasazení (končí na /exec) a pošli ji
  */
 
-function doGet() {
-  var v = PropertiesService.getScriptProperties().getProperty("STATE");
+function doGet(e) {
+  var v = PropertiesService.getScriptProperties().getProperty("STATE") || "{}";
+  var cb = e && e.parameter && e.parameter.callback;
+  if (cb) {
+    // JSONP – obejde CORS při čtení z prohlížeče
+    return ContentService
+      .createTextOutput(cb + "(" + v + ")")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
   return ContentService
-    .createTextOutput(v || "{}")
+    .createTextOutput(v)
     .setMimeType(ContentService.MimeType.JSON);
 }
 

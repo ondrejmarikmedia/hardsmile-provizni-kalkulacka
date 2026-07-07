@@ -340,13 +340,14 @@ var _React = React,
 // ===== Perzistence úprav =====
 // Sdílené úložiště (Google Apps Script). Prázdné = jen lokálně (localStorage).
 // Sem vlož URL nasazeného Apps Scriptu (…/exec).
-var SHARED_STORE_URL = "";
+var SHARED_STORE_URL = "https://script.google.com/macros/s/AKfycbxIy-3sScjYmeit1fAxm9KvjRMan2HvOjKuIu77uHiS7fAxkdeOhIIndcrwFfneN77m/exec";
 var LS_KEY = "hardsmile_calc_v1";
 function loadStore() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; }
 }
 var _pushTimer = null;
-// Odešle celý stav do sdíleného úložiště (debounced, POST text/plain kvůli CORS bez preflightu).
+// Odešle celý stav do sdíleného úložiště (debounced). POST text/plain + no-cors = zápis bez
+// CORS preflightu; odpověď je nečitelná (opaque), ale zápis na serveru proběhne.
 function pushShared() {
   if (!SHARED_STORE_URL) return;
   if (_pushTimer) clearTimeout(_pushTimer);
@@ -354,6 +355,7 @@ function pushShared() {
     try {
       fetch(SHARED_STORE_URL, {
         method: "POST",
+        mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(loadStore())
       });
@@ -367,15 +369,33 @@ function saveStore(patch) {
   } catch (e) {}
   pushShared();
 }
-// Při startu načte sdílený stav a uloží ho do localStorage cache (App ho pak čte synchronně).
-async function loadSharedIntoCache() {
-  if (!SHARED_STORE_URL) return;
-  try {
-    var shared = await fetch(SHARED_STORE_URL, { method: "GET" }).then(function (r) { return r.json(); });
-    if (shared && typeof shared === "object" && Object.keys(shared).length) {
-      localStorage.setItem(LS_KEY, JSON.stringify(shared));
+// Při startu načte sdílený stav přes JSONP (obejde CORS) a uloží do localStorage cache.
+function loadSharedIntoCache() {
+  return new Promise(function (resolve) {
+    if (!SHARED_STORE_URL) return resolve();
+    var cbName = "__hsCb_" + Date.now();
+    var s = document.createElement("script");
+    var done = false;
+    function cleanup() {
+      try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      if (s.parentNode) s.parentNode.removeChild(s);
+      clearTimeout(timer);
     }
-  } catch (e) { console.warn("Nelze načíst sdílená data:", e); }
+    var timer = setTimeout(function () { if (!done) { done = true; cleanup(); resolve(); } }, 8000);
+    window[cbName] = function (data) {
+      done = true;
+      try {
+        if (data && typeof data === "object" && Object.keys(data).length) {
+          localStorage.setItem(LS_KEY, JSON.stringify(data));
+        }
+      } catch (e) {}
+      cleanup();
+      resolve();
+    };
+    s.onerror = function () { if (!done) { done = true; cleanup(); resolve(); } };
+    s.src = SHARED_STORE_URL + (SHARED_STORE_URL.indexOf("?") >= 0 ? "&" : "?") + "callback=" + cbName;
+    document.head.appendChild(s);
+  });
 }
 // Sestaví data měsíců s uloženými úpravami obratů/počtů (ad_cost zůstává čerstvý ze sheetu).
 function buildDataRows(store) {
