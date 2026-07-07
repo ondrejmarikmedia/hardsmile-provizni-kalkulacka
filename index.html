@@ -1144,79 +1144,108 @@ function FixedCostEditor(_ref4) {
     }
   }, "+ P\u0159idat polo\u017Eku"));
 }
-function VoEditor(_ref5) {
-  var emails = _ref5.emails,
-    onChange = _ref5.onChange;
-  var _u1 = useState(false), _u1a = _slicedToArray(_u1, 2), unlocked = _u1a[0], setUnlocked = _u1a[1];
-  var _u2 = useState(""), _u2a = _slicedToArray(_u2, 2), pw = _u2a[0], setPw = _u2a[1];
-  var _u3 = useState(""), _u3a = _slicedToArray(_u3, 2), newEmail = _u3a[0], setNewEmail = _u3a[1];
-  var _u4 = useState(false), _u4a = _slicedToArray(_u4, 2), open = _u4a[0], setOpen = _u4a[1];
-  var box = {
-    backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10,
-    padding: "16px 20px", marginBottom: 24
-  };
-  var addEmail = function addEmail() {
-    var e = (newEmail || "").trim().toLowerCase();
-    if (!e) return;
-    if (emails.indexOf(e) === -1) onChange([].concat(_toConsumableArray(emails), [e]));
-    setNewEmail("");
-  };
-  var removeEmail = function removeEmail(e) {
-    onChange(emails.filter(function (x) { return x !== e; }));
-  };
-  // Zabalený stav – jen tlačítko pro otevření
+var CLS_COLORS = { NEW: "#1d4ed8", MO: "#f97316", VO: "#7c3aed" };
+function CustomerTable(_ref5) {
+  var storeUrl = _ref5.storeUrl,
+    overrides = _ref5.overrides,
+    onSetClass = _ref5.onSetClass;
+  var _u1 = useState(false), _u1a = _slicedToArray(_u1, 2), open = _u1a[0], setOpen = _u1a[1];
+  var _u2 = useState(false), _u2a = _slicedToArray(_u2, 2), unlocked = _u2a[0], setUnlocked = _u2a[1];
+  var _u3 = useState(""), _u3a = _slicedToArray(_u3, 2), pw = _u3a[0], setPw = _u3a[1];
+  var _u4 = useState(null), _u4a = _slicedToArray(_u4, 2), rows = _u4a[0], setRows = _u4a[1];
+  var _u5 = useState(""), _u5a = _slicedToArray(_u5, 2), q = _u5a[0], setQ = _u5a[1];
+  var _u6 = useState("ALL"), _u6a = _slicedToArray(_u6, 2), fCls = _u6a[0], setFCls = _u6a[1];
+  var _u7 = useState("revenue"), _u7a = _slicedToArray(_u7, 2), sortKey = _u7a[0], setSortKey = _u7a[1];
+  var box = { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 };
+  useEffect(function () {
+    if (!unlocked || rows !== null || !storeUrl) return;
+    fetch(storeUrl + (storeUrl.indexOf("?") >= 0 ? "&" : "?") + "customers=1")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setRows(Array.isArray(d) ? d : []); })
+      .catch(function () { setRows([]); });
+  }, [unlocked]);
   if (!open) {
     return /*#__PURE__*/React.createElement("div", { style: box }, /*#__PURE__*/React.createElement("button", {
       onClick: function () { setOpen(true); },
       style: { border: "none", background: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#374151", padding: 0 }
-    }, "🔒 Seznam VO z\xE1kazn\xEDků (chr\xE1něno heslem)"));
+    }, "🔒 Datab\xE1ze z\xE1kazn\xEDků (chr\xE1něno heslem)"));
   }
-  // Otevřeno, ale zamčeno – vyžádej heslo
   if (!unlocked) {
     return /*#__PURE__*/React.createElement("div", { style: box },
-      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 10 } }, "🔒 Seznam VO z\xE1kazn\xEDků — zadej heslo"),
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 10 } }, "🔒 Datab\xE1ze z\xE1kazn\xEDků — zadej heslo"),
       /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
         /*#__PURE__*/React.createElement("input", {
-          type: "password", value: pw, placeholder: "Heslo",
+          type: "password", value: pw, placeholder: "Heslo", autoFocus: true,
           onChange: function (e) { setPw(e.target.value); },
-          onKeyDown: function (e) { if (e.key === "Enter") { if (pw === "Hardsmile01") setUnlocked(true); } },
+          onKeyDown: function (e) { if (e.key === "Enter") { if (pw === "Hardsmile01") setUnlocked(true); else alert("Špatn\xE9 heslo"); } },
           style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 }
         }),
-        /*#__PURE__*/React.createElement("button", {
-          onClick: function () { if (pw === "Hardsmile01") setUnlocked(true); else alert("Špatn\xE9 heslo"); },
-          style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" }
-        }, "Odemknout"),
-        /*#__PURE__*/React.createElement("button", {
-          onClick: function () { setOpen(false); setPw(""); },
-          style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280" }
-        }, "Zavř\xEDt")
+        /*#__PURE__*/React.createElement("button", { onClick: function () { if (pw === "Hardsmile01") setUnlocked(true); else alert("Špatn\xE9 heslo"); }, style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" } }, "Odemknout"),
+        /*#__PURE__*/React.createElement("button", { onClick: function () { setOpen(false); setPw(""); }, style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280" } }, "Zavř\xEDt")
       )
     );
   }
-  // Odemčeno – seznam + přidávání
+  var eff = function (r) { return overrides[r.email] || r.cls; };
+  var list = (rows || []).slice();
+  var qq = q.trim().toLowerCase();
+  if (qq) list = list.filter(function (r) { return r.email.indexOf(qq) >= 0; });
+  if (fCls !== "ALL") list = list.filter(function (r) { return eff(r) === fCls; });
+  list.sort(function (a, b) {
+    if (sortKey === "email") return a.email < b.email ? -1 : 1;
+    return (b[sortKey] || 0) - (a[sortKey] || 0);
+  });
+  var th = { textAlign: "left", padding: "8px 10px", fontSize: 11, fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", borderBottom: "1px solid #e5e7eb", position: "sticky", top: 0, background: "#fff" };
+  var td = { padding: "7px 10px", fontSize: 13, borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" };
+  var ctrl = { padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 };
+  var totals = { NEW: 0, MO: 0, VO: 0 };
+  (rows || []).forEach(function (r) { totals[eff(r)] = (totals[eff(r)] || 0) + 1; });
   return /*#__PURE__*/React.createElement("div", { style: box },
-    /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
-      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151" } }, "🔓 Seznam VO z\xE1kazn\xEDků"),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 } },
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151" } }, "🔓 Datab\xE1ze z\xE1kazn\xEDků ", rows ? "(" + rows.length + ") — NEW " + totals.NEW + " · MO " + totals.MO + " · VO " + totals.VO : ""),
       /*#__PURE__*/React.createElement("button", { onClick: function () { setUnlocked(false); setOpen(false); setPw(""); }, style: { border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280", padding: "4px 10px", fontSize: 12 } }, "Zamknout")
     ),
-    /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "E-maily zde uveden\xE9 se od června 2026 poč\xEDtaj\xED jako velkoobchod (VO). Změna se projev\xED po obnoven\xED str\xE1nky."),
-    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-      /*#__PURE__*/React.createElement("input", {
-        type: "email", value: newEmail, placeholder: "email@zakaznik.cz",
-        onChange: function (e) { setNewEmail(e.target.value); },
-        onKeyDown: function (e) { if (e.key === "Enter") addEmail(); },
-        style: { flex: 1, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 }
-      }),
-      /*#__PURE__*/React.createElement("button", { onClick: addEmail, style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" } }, "Přidat")
+    /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Změna zařazen\xED se od června 2026 prom\xEDtne do v\xFdpočtu (po obnoven\xED str\xE1nky). NEW = nov\xFd z\xE1kazn\xEDk (provize), MO = st\xE1vaj\xEDc\xED, VO = velkoobchod."),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" } },
+      /*#__PURE__*/React.createElement("input", { style: _objectSpread(_objectSpread({}, ctrl), {}, { flex: 1, minWidth: 180 }), placeholder: "Hledat e-mail…", value: q, onChange: function (e) { setQ(e.target.value); } }),
+      /*#__PURE__*/React.createElement("select", { style: ctrl, value: fCls, onChange: function (e) { setFCls(e.target.value); } },
+        /*#__PURE__*/React.createElement("option", { value: "ALL" }, "Vše"),
+        /*#__PURE__*/React.createElement("option", { value: "NEW" }, "NEW"),
+        /*#__PURE__*/React.createElement("option", { value: "MO" }, "MO"),
+        /*#__PURE__*/React.createElement("option", { value: "VO" }, "VO")),
+      /*#__PURE__*/React.createElement("select", { style: ctrl, value: sortKey, onChange: function (e) { setSortKey(e.target.value); } },
+        /*#__PURE__*/React.createElement("option", { value: "revenue" }, "Řadit: obrat"),
+        /*#__PURE__*/React.createElement("option", { value: "orders" }, "Řadit: objednávky"),
+        /*#__PURE__*/React.createElement("option", { value: "email" }, "Řadit: e-mail"))
     ),
-    emails.length === 0
-      ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af" } }, "Zat\xEDm ž\xE1dn\xE9 ručně přidan\xE9 VO e-maily. (VO skupiny ze Shoptetu se pozn\xE1vaj\xED automaticky.)")
-      : /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, emails.map(function (e) {
-          return /*#__PURE__*/React.createElement("div", { key: e, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", backgroundColor: "#f9fafb", borderRadius: 6, fontSize: 13 } },
-            /*#__PURE__*/React.createElement("span", null, e),
-            /*#__PURE__*/React.createElement("button", { onClick: function () { removeEmail(e); }, style: { border: "none", background: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 } }, "\xD7")
-          );
-        }))
+    rows === null
+      ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af", padding: "20px 0", textAlign: "center" } }, "Načítám zákazníky…")
+      : /*#__PURE__*/React.createElement("div", { style: { maxHeight: 460, overflow: "auto", border: "1px solid #f3f4f6", borderRadius: 8 } },
+          /*#__PURE__*/React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+            /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
+              /*#__PURE__*/React.createElement("th", { style: th }, "E-mail"),
+              /*#__PURE__*/React.createElement("th", { style: _objectSpread(_objectSpread({}, th), {}, { textAlign: "right" }) }, "Obj."),
+              /*#__PURE__*/React.createElement("th", { style: _objectSpread(_objectSpread({}, th), {}, { textAlign: "right" }) }, "Obrat"),
+              /*#__PURE__*/React.createElement("th", { style: th }, "Posl. obj."),
+              /*#__PURE__*/React.createElement("th", { style: th }, "Skupina"),
+              /*#__PURE__*/React.createElement("th", { style: th }, "Zařazen\xED"))),
+            /*#__PURE__*/React.createElement("tbody", null, list.map(function (r) {
+              var c = eff(r);
+              var over = !!overrides[r.email];
+              return /*#__PURE__*/React.createElement("tr", { key: r.email },
+                /*#__PURE__*/React.createElement("td", { style: td }, r.email),
+                /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right" }) }, r.orders),
+                /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", fontWeight: 600 }) }, fmt(r.revenue)),
+                /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { color: "#6b7280" }) }, r.lastDate),
+                /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { color: "#6b7280", fontSize: 12 }) }, r.grpName || "—"),
+                /*#__PURE__*/React.createElement("td", { style: td }, /*#__PURE__*/React.createElement("select", {
+                  value: c,
+                  onChange: function (e) { onSetClass(r.email, e.target.value === r.cls ? null : e.target.value); },
+                  style: { padding: "3px 6px", borderRadius: 5, border: "1px solid " + (over ? CLS_COLORS[c] : "#d1d5db"), color: CLS_COLORS[c], fontWeight: 700, fontSize: 12, cursor: "pointer", background: over ? "#f9fafb" : "#fff" }
+                },
+                  /*#__PURE__*/React.createElement("option", { value: "NEW" }, "NEW"),
+                  /*#__PURE__*/React.createElement("option", { value: "MO" }, "MO"),
+                  /*#__PURE__*/React.createElement("option", { value: "VO" }, "VO"))));
+            }))))
   );
 }
 function App() {
@@ -1249,6 +1278,17 @@ function App() {
     _useState14 = _slicedToArray(_useState13, 2),
     voEmails = _useState14[0],
     setVoEmails = _useState14[1];
+  var _useState15 = useState(_store0.classOverride || {}),
+    _useState16 = _slicedToArray(_useState15, 2),
+    classOverride = _useState16[0],
+    setClassOverride = _useState16[1];
+  var setCustomerClass = function setCustomerClass(email, cls) {
+    setClassOverride(function (prev) {
+      var next = Object.assign({}, prev);
+      if (cls) next[email] = cls; else delete next[email];
+      return next;
+    });
+  };
   // Automatické ukládání jen při skutečné úpravě (ne při prvním načtení),
   // aby se sdílená data nepřepsala výchozími, když se načtení nezdaří.
   var _didMount = useRef(false);
@@ -1260,6 +1300,7 @@ function App() {
     saveStore({ hours: map });
   }, [hoursData]);
   useEffect(function () { if (!_didMount.current) return; saveStore({ voEmails: voEmails }); }, [voEmails]);
+  useEffect(function () { if (!_didMount.current) return; saveStore({ classOverride: classOverride }); }, [classOverride]);
   useEffect(function () { _didMount.current = true; }, []);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
@@ -2436,9 +2477,10 @@ function App() {
     onChange: updateFixedForMonth,
     month: selectedMonthStr,
     monthLabel: selectedMonthLabel
-  }), /*#__PURE__*/React.createElement(VoEditor, {
-    emails: voEmails,
-    onChange: setVoEmails
+  }), /*#__PURE__*/React.createElement(CustomerTable, {
+    storeUrl: SHARED_STORE_URL,
+    overrides: classOverride,
+    onSetClass: setCustomerClass
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -2525,15 +2567,18 @@ async function loadFromSheets() {
 }
 
 (async function init() {
-  try {
-    var sd = await loadFromSheets();
-    if (sd.data && sd.data.length > 0) DATA = sd.data;
-    if (sd.channelData && sd.channelData.length > 0) CHANNEL_DATA = sd.channelData;
-  } catch(e) {
-    console.warn("Nelze načíst Google Sheets, používám záložní data:", e);
-  }
-  await loadShoptetRevenue();
-  await loadSharedIntoCache();
+  // Načtení všech zdrojů, ale s pojistkou – když se některý fetch zdrží,
+  // aplikace se stejně vykreslí (max. čekání ~9 s), ať nikdy nezůstane viset.
+  var loaders = (async function () {
+    try {
+      var sd = await loadFromSheets();
+      if (sd && sd.data && sd.data.length > 0) DATA = sd.data;
+      if (sd && sd.channelData && sd.channelData.length > 0) CHANNEL_DATA = sd.channelData;
+    } catch (e) { console.warn("Nelze načíst Google Sheets:", e); }
+    try { await loadShoptetRevenue(); } catch (e) {}
+    try { await loadSharedIntoCache(); } catch (e) {}
+  })();
+  await Promise.race([loaders, new Promise(function (r) { setTimeout(r, 9000); })]);
   ReactDOM.render(/*#__PURE__*/React.createElement(App, null), document.getElementById("root"));
   var overlay = document.getElementById("gs-loading");
   if (overlay) overlay.parentNode.removeChild(overlay);

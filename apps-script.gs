@@ -18,6 +18,8 @@ function doGet(e) {
   var body;
   if (p.orders) {
     body = getOrdersAgg();
+  } else if (p.customers) {
+    body = JSON.stringify(computeCustomers());
   } else {
     body = PropertiesService.getScriptProperties().getProperty("STATE") || "{}";
   }
@@ -94,19 +96,25 @@ function loadManualVO() {
   return set;
 }
 
-function computeOrdersAgg() {
-  var seznam = loadSeznam();
-  var voManual = loadManualVO();
-  var resp = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true });
-  var text = resp.getContentText("windows-1250");
+// Ruční přepis klasifikace per e-mail: { "email": "NEW"|"MO"|"VO" } uložený v STATE.
+function loadClassOverride() {
+  var m = {};
+  try {
+    var state = JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}");
+    var co = state.classOverride || {};
+    Object.keys(co).forEach(function (k) { m[String(k).trim().toLowerCase()] = co[k]; });
+  } catch (e) {}
+  return m;
+}
+
+// Stáhne export a vrátí 1 řádek na objednávku (deduplikováno podle id).
+function fetchOrders() {
+  var text = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true }).getContentText("windows-1250");
   var lines = text.split(/\r?\n/);
   var header = parseCsvLine(lines[0]).map(function (h) { return h.replace(/"/g, "").trim(); });
   var col = {};
   header.forEach(function (h, i) { col[h] = i; });
-
-  // odděl 1 řádek na objednávku (totalPriceWithoutVat je totožná na všech řádcích objednávky)
-  var seenId = {};
-  var orders = [];
+  var seenId = {}, orders = [];
   for (var i = 1; i < lines.length; i++) {
     if (!lines[i]) continue;
     var f = parseCsvLine(lines[i]).map(function (x) { return x.replace(/^"|"$/g, ""); });
@@ -122,24 +130,60 @@ function computeOrdersAgg() {
       price: num(f[col["totalPriceWithoutVat"]])
     });
   }
+  return orders;
+}
 
+// Zařadí objednávku/zákazníka do NEW/MO/VO. Priorita: ruční přepis → VO → seznam(MO) → NEW.
+function classify(email, grpType, grpName, ctx) {
+  var ov = ctx.classOverride[email];
+  if (ov === "NEW" || ov === "MO" || ov === "VO") return ov;
+  if (grpType === "customerGroupTypeWholesale" || /^VO/i.test(grpName) || /elkoobchod/.test(grpName) || ctx.voManual[email]) return "VO";
+  if (ctx.seznam[email]) return "MO";
+  return "NEW";
+}
+
+function loadClassCtx() {
+  return { seznam: loadSeznam(), voManual: loadManualVO(), classOverride: loadClassOverride() };
+}
+
+function computeOrdersAgg() {
+  var ctx = loadClassCtx();
+  var orders = fetchOrders();
   var agg = {};
   orders.forEach(function (o) {
     if (o.date.length < 7) return;
     var ym = o.date.substring(0, 7);
     if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0 };
-    // VO = velkoobchodní typ skupiny NEBO název skupiny "VO…"/"Velkoobchod…"
-    // (Shoptet u skupin VO 10/30/35 chybně vrací typ Retail, proto i podle názvu).
-    var isVO = o.grpType === "customerGroupTypeWholesale" || /^VO/i.test(o.grpName) || /elkoobchod/.test(o.grpName) || voManual[o.email];
-    if (isVO) {
-      agg[ym].rev_vo += o.price; agg[ym].cnt_vo++;
-    } else if (seznam[o.email]) {
-      // e-mail je v seznamu stávajících zákazníků = MO
-      agg[ym].rev_mo += o.price; agg[ym].cnt_mo++;
-    } else {
-      // e-mail není v seznamu = nový zákazník = NEW
-      agg[ym].rev_new += o.price; agg[ym].cnt_new++;
-    }
+    var cls = classify(o.email, o.grpType, o.grpName, ctx);
+    if (cls === "VO") { agg[ym].rev_vo += o.price; agg[ym].cnt_vo++; }
+    else if (cls === "MO") { agg[ym].rev_mo += o.price; agg[ym].cnt_mo++; }
+    else { agg[ym].rev_new += o.price; agg[ym].cnt_new++; }
   });
   return agg;
+}
+
+// Agregace po zákaznících pro tabulku: e-mail, počet objednávek, obrat, poslední objednávka, skupina, klasifikace.
+function computeCustomers() {
+  var ctx = loadClassCtx();
+  var orders = fetchOrders();
+  var byEmail = {};
+  orders.forEach(function (o) {
+    if (!o.email) return;
+    if (!byEmail[o.email]) byEmail[o.email] = { email: o.email, orders: 0, revenue: 0, lastDate: "", grpName: o.grpName, grpType: o.grpType };
+    var c = byEmail[o.email];
+    c.orders++;
+    c.revenue += o.price;
+    if (o.date > c.lastDate) { c.lastDate = o.date; c.grpName = o.grpName; c.grpType = o.grpType; }
+  });
+  return Object.keys(byEmail).map(function (e) {
+    var c = byEmail[e];
+    return {
+      email: c.email,
+      orders: c.orders,
+      revenue: Math.round(c.revenue),
+      lastDate: c.lastDate.substring(0, 10),
+      grpName: c.grpName,
+      cls: classify(c.email, c.grpType, c.grpName, ctx)
+    };
+  });
 }
