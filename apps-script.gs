@@ -105,6 +105,7 @@ function computeOrdersAgg() {
       date: f[col["date"]] || "",
       email: (f[col["email"]] || "").toLowerCase(),
       grpType: f[col["customerGroupType"]] || "",
+      grpName: f[col["customerGroupName"]] || "",
       price: num(f[col["totalPriceWithoutVat"]])
     });
   }
@@ -114,8 +115,10 @@ function computeOrdersAgg() {
     if (o.date.length < 7) return;
     var ym = o.date.substring(0, 7);
     if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0 };
-    if (o.grpType === "customerGroupTypeWholesale") {
-      // velkoobchod = VO
+    // VO = velkoobchodní typ skupiny NEBO název skupiny "VO…"/"Velkoobchod…"
+    // (Shoptet u skupin VO 10/30/35 chybně vrací typ Retail, proto i podle názvu).
+    var isVO = o.grpType === "customerGroupTypeWholesale" || /^VO/i.test(o.grpName) || /elkoobchod/.test(o.grpName);
+    if (isVO) {
       agg[ym].rev_vo += o.price; agg[ym].cnt_vo++;
     } else if (seznam[o.email]) {
       // e-mail je v seznamu stávajících zákazníků = MO
