@@ -10,6 +10,8 @@
  */
 
 var SHOPTET_ORDERS_URL = "https://www.hardsmile.cz/export/orders.csv?patternId=7&partnerId=4&hash=7fd706778b979c489111fa4b1ea743e3d84f5cf29ca480b4bbf847864683b7ba";
+// Seznam e-mailů STÁVAJÍCÍCH zákazníků (MO). Kdo tu není = nový zákazník (NEW).
+var SEZNAM_URL = "https://docs.google.com/spreadsheets/d/1eSX2KjOZNcVR1hK1UF3taR-HY-HxzwD8WHSYhysGCOc/gviz/tq?tqx=out:csv&sheet=seznam";
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
@@ -66,7 +68,22 @@ function num(s) {
   return parseFloat(String(s).replace(/\s/g, "").replace(",", ".")) || 0;
 }
 
+// Načte seznam e-mailů stávajících zákazníků (množina, malými písmeny).
+function loadSeznam() {
+  var set = {};
+  try {
+    var resp = UrlFetchApp.fetch(SEZNAM_URL, { muteHttpExceptions: true });
+    var lines = resp.getContentText("UTF-8").split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var e = lines[i].replace(/^"|"$/g, "").trim().toLowerCase();
+      if (e && e !== "email") set[e] = true;
+    }
+  } catch (err) {}
+  return set;
+}
+
 function computeOrdersAgg() {
+  var seznam = loadSeznam();
   var resp = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true });
   var text = resp.getContentText("windows-1250");
   var lines = text.split(/\r?\n/);
@@ -92,21 +109,20 @@ function computeOrdersAgg() {
     });
   }
 
-  orders.sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
-
-  var seenEmail = {};
   var agg = {};
   orders.forEach(function (o) {
     if (o.date.length < 7) return;
     var ym = o.date.substring(0, 7);
     if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0 };
     if (o.grpType === "customerGroupTypeWholesale") {
+      // velkoobchod = VO
       agg[ym].rev_vo += o.price; agg[ym].cnt_vo++;
-    } else if (!seenEmail[o.email]) {
-      seenEmail[o.email] = true;
-      agg[ym].rev_new += o.price; agg[ym].cnt_new++;
-    } else {
+    } else if (seznam[o.email]) {
+      // e-mail je v seznamu stávajících zákazníků = MO
       agg[ym].rev_mo += o.price; agg[ym].cnt_mo++;
+    } else {
+      // e-mail není v seznamu = nový zákazník = NEW
+      agg[ym].rev_new += o.price; agg[ym].cnt_new++;
     }
   });
   return agg;
