@@ -120,9 +120,13 @@ function fetchOrders() {
     var f = parseCsvLine(lines[i]).map(function (x) { return x.replace(/^"|"$/g, ""); });
     var id = f[col["id"]];
     if (!id || seenId[id]) continue;
+    var status = f[col["statusName"]] || "";
+    // Nezapočítávat storna / zrušené / vrácené objednávky.
+    if (/storn|zrušen|vrácen|refund/i.test(status)) { seenId[id] = true; continue; }
     seenId[id] = true;
     orders.push({
       id: id,
+      status: status,
       date: f[col["date"]] || "",
       email: (f[col["email"]] || "").toLowerCase(),
       grpType: f[col["customerGroupType"]] || "",

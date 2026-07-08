@@ -1831,6 +1831,8 @@ function App() {
     })
   }, "M\u011Bs\xEDc"), /*#__PURE__*/React.createElement("th", {
     style: headerCell
+  }, "Obj."), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
   }, "Obrat NEW"), /*#__PURE__*/React.createElement("th", {
     style: headerCell
   }, "Obrat MO"), /*#__PURE__*/React.createElement("th", {
@@ -1874,6 +1876,8 @@ function App() {
     }, /*#__PURE__*/React.createElement("td", {
       style: labelCell
     }, r.label), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, r.cnt_new + r.cnt_mo + r.cnt_vo), /*#__PURE__*/React.createElement("td", {
       style: cellBase
     }, fmt(r.rev_new)), /*#__PURE__*/React.createElement("td", {
       style: cellBase
@@ -1928,6 +1932,10 @@ function App() {
       fontSize: 13
     })
   }, "CELKEM"), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, totals.cnt_new + totals.cnt_mo + totals.cnt_vo), /*#__PURE__*/React.createElement("td", {
     style: _objectSpread(_objectSpread({}, cellBase), {}, {
       fontWeight: 700
     })
