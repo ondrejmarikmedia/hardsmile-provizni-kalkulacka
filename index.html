@@ -1156,7 +1156,15 @@ function CustomerTable(_ref5) {
   var _u5 = useState(""), _u5a = _slicedToArray(_u5, 2), q = _u5a[0], setQ = _u5a[1];
   var _u6 = useState("ALL"), _u6a = _slicedToArray(_u6, 2), fCls = _u6a[0], setFCls = _u6a[1];
   var _u7 = useState("revenue"), _u7a = _slicedToArray(_u7, 2), sortKey = _u7a[0], setSortKey = _u7a[1];
+  var _u8 = useState(""), _u8a = _slicedToArray(_u8, 2), newEmail = _u8a[0], setNewEmail = _u8a[1];
+  var _u9 = useState("VO"), _u9a = _slicedToArray(_u9, 2), newCls = _u9a[0], setNewCls = _u9a[1];
   var box = { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 };
+  var addClient = function () {
+    var e = (newEmail || "").trim().toLowerCase();
+    if (!e) return;
+    onSetClass(e, newCls);
+    setNewEmail("");
+  };
   useEffect(function () {
     if (!unlocked || rows !== null || !storeUrl) return;
     fetch(storeUrl + (storeUrl.indexOf("?") >= 0 ? "&" : "?") + "customers=1")
@@ -1187,6 +1195,12 @@ function CustomerTable(_ref5) {
   }
   var eff = function (r) { return overrides[r.email] || r.cls; };
   var list = (rows || []).slice();
+  // Ručně přidaní klienti (přes override), kteří ještě nemají žádnou objednávku v exportu.
+  var present = {};
+  list.forEach(function (r) { present[r.email] = true; });
+  Object.keys(overrides).forEach(function (em) {
+    if (!present[em]) list.push({ email: em, orders: 0, revenue: 0, lastDate: "—", grpName: "ručně", cls: overrides[em] });
+  });
   var qq = q.trim().toLowerCase();
   if (qq) list = list.filter(function (r) { return r.email.indexOf(qq) >= 0; });
   if (fCls !== "ALL") list = list.filter(function (r) { return eff(r) === fCls; });
@@ -1217,9 +1231,18 @@ function CustomerTable(_ref5) {
         /*#__PURE__*/React.createElement("option", { value: "orders" }, "Řadit: objednávky"),
         /*#__PURE__*/React.createElement("option", { value: "email" }, "Řadit: e-mail"))
     ),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } },
+      /*#__PURE__*/React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "#6b7280" } }, "+ Přidat klienta:"),
+      /*#__PURE__*/React.createElement("input", { style: _objectSpread(_objectSpread({}, ctrl), {}, { flex: 1, minWidth: 180 }), type: "email", placeholder: "email@klient.cz", value: newEmail, onChange: function (e) { setNewEmail(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter") addClient(); } }),
+      /*#__PURE__*/React.createElement("select", { style: ctrl, value: newCls, onChange: function (e) { setNewCls(e.target.value); } },
+        /*#__PURE__*/React.createElement("option", { value: "NEW" }, "NEW"),
+        /*#__PURE__*/React.createElement("option", { value: "MO" }, "MO"),
+        /*#__PURE__*/React.createElement("option", { value: "VO" }, "VO")),
+      /*#__PURE__*/React.createElement("button", { onClick: addClient, style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" } }, "Přidat")
+    ),
     rows === null
       ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af", padding: "20px 0", textAlign: "center" } }, "Načítám zákazníky…")
-      : /*#__PURE__*/React.createElement("div", { style: { maxHeight: 460, overflow: "auto", border: "1px solid #f3f4f6", borderRadius: 8 } },
+      : /*#__PURE__*/React.createElement("div", { style: { maxHeight: 720, overflow: "auto", border: "1px solid #f3f4f6", borderRadius: 8 } },
           /*#__PURE__*/React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
             /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
               /*#__PURE__*/React.createElement("th", { style: th }, "E-mail"),
@@ -1245,7 +1268,14 @@ function CustomerTable(_ref5) {
                   /*#__PURE__*/React.createElement("option", { value: "NEW" }, "NEW"),
                   /*#__PURE__*/React.createElement("option", { value: "MO" }, "MO"),
                   /*#__PURE__*/React.createElement("option", { value: "VO" }, "VO"))));
-            }))))
+            })),
+            /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", { style: { position: "sticky", bottom: 0, background: "#f0fdf4" } },
+              /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { fontWeight: 800 }) }, "CELKEM (" + list.length + ")"),
+              /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", fontWeight: 800 }) }, list.reduce(function (s, r) { return s + (r.orders || 0); }, 0)),
+              /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", fontWeight: 800 }) }, fmt(list.reduce(function (s, r) { return s + (r.revenue || 0); }, 0))),
+              /*#__PURE__*/React.createElement("td", { style: td }, ""),
+              /*#__PURE__*/React.createElement("td", { style: td }, ""),
+              /*#__PURE__*/React.createElement("td", { style: td }, "")))))
   );
 }
 function App() {
