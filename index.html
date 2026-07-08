@@ -1567,11 +1567,13 @@ function App() {
       fontSize: 12
     }
   }, includeFixed ? fmt(totalFixed) + " Kč/měs v kalkulaci" : "Pouze ad costs (kredity)"))), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, marginBottom: 24, alignItems: "stretch", flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "repeat(4, 1fr)",
+      gridTemplateColumns: "repeat(2, 1fr)",
       gap: 10,
-      marginBottom: 16
+      flex: "2 1 300px"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1678,8 +1680,8 @@ function App() {
       backgroundColor: "#ecfdf5",
       border: "2px solid #059669",
       borderRadius: 10,
-      padding: "16px 20px",
-      marginBottom: 24,
+      padding: "14px 18px",
+      flex: "3 1 360px",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -1705,7 +1707,7 @@ function App() {
       onChange: function (e) { updateRevField(selectedMonth, fld.f, e.target.value); },
       style: { width: 90, fontSize: 12, padding: "3px 6px", border: "1px solid #a7f3d0", borderRadius: 5 }
     }));
-  })))), /*#__PURE__*/React.createElement("div", {
+  }))))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 24
     }
