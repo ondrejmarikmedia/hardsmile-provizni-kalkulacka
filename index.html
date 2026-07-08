@@ -388,16 +388,7 @@ async function loadShoptetRevenue() {
   try {
     var agg = await fetch(SHARED_STORE_URL + (SHARED_STORE_URL.indexOf("?") >= 0 ? "&" : "?") + "orders=1")
       .then(function (r) { return r.json(); });
-    if (!agg || typeof agg !== "object") return;
-    DATA = DATA.map(function (d) {
-      if (d.month < SHOPTET_LIVE_FROM) return d;
-      var o = agg[d.month];
-      if (!o || typeof o.rev_new !== "number") return d;
-      return Object.assign({}, d, {
-        rev_new: o.rev_new, rev_mo: o.rev_mo, rev_vo: o.rev_vo,
-        cnt_new: o.cnt_new, cnt_mo: o.cnt_mo, cnt_vo: o.cnt_vo
-      });
-    });
+    if (agg && typeof agg === "object") ORDERS_AGG = agg;
   } catch (e) { console.warn("Nelze načíst obrat ze Shoptetu:", e); }
 }
 // Sestaví data měsíců s uloženými úpravami obratů/počtů (ad_cost zůstává čerstvý ze sheetu).
@@ -1278,6 +1269,47 @@ function CustomerTable(_ref5) {
               /*#__PURE__*/React.createElement("td", { style: td }, "")))))
   );
 }
+// ===== Dynamické měsíce – DATA se sestavují ze živých zdrojů (ad costs + Shoptet) =====
+var BASE_DATA = DATA;            // původní ručně zadané měsíce (autoritativní historie)
+var AD_BY_MONTH = {};            // ad costs po měsících (z reklamního sheetu)
+var ORDERS_AGG = {};             // obrat po měsících (ze Shoptetu)
+var CS_MONTHS = ["Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"];
+function labelFor(ym) {
+  var p = ym.split("-");
+  return (CS_MONTHS[parseInt(p[1], 10) - 1] || p[1]) + " " + p[0];
+}
+// Sestaví DATA + CHANNEL_DATA pro všechny měsíce od začátku po aktuální (nové měsíce se přidají samy).
+function rebuildMonths() {
+  var base = {};
+  BASE_DATA.forEach(function (d) { base[d.month] = d; });
+  var set = {};
+  BASE_DATA.forEach(function (d) { set[d.month] = 1; });
+  Object.keys(AD_BY_MONTH).forEach(function (m) { set[m] = 1; });
+  Object.keys(ORDERS_AGG).forEach(function (m) { set[m] = 1; });
+  try {
+    var now = new Date();
+    set[now.getFullYear() + "-" + ("0" + (now.getMonth() + 1)).slice(-2)] = 1;
+  } catch (e) {}
+  var start = BASE_DATA[0].month;
+  var months = Object.keys(set).filter(function (m) { return m >= start; }).sort();
+  DATA = months.map(function (m) {
+    var b = base[m] || {};
+    var ad = AD_BY_MONTH[m];
+    var adTotal = ad ? (ad.facebook.cost + ad.google.cost + ad.seznam.cost + ad.srovname.cost) : 0;
+    var ad_cost = (b.ad_cost && b.ad_cost > 0 && m < SHOPTET_LIVE_FROM) ? b.ad_cost : (adTotal || b.ad_cost || 0);
+    var r = (m >= SHOPTET_LIVE_FROM && ORDERS_AGG[m]) ? ORDERS_AGG[m] : b;
+    return {
+      month: m, label: b.label || labelFor(m),
+      rev_new: r.rev_new || 0, rev_mo: r.rev_mo || 0, rev_vo: r.rev_vo || 0,
+      cnt_new: r.cnt_new || 0, cnt_mo: r.cnt_mo || 0, cnt_vo: r.cnt_vo || 0,
+      ad_cost: ad_cost
+    };
+  });
+  CHANNEL_DATA = DATA.map(function (d) {
+    var ad = AD_BY_MONTH[d.month] || { facebook: { cost: 0, value: 0 }, google: { cost: 0, value: 0 }, seznam: { cost: 0, value: 0 }, srovname: { cost: 0, value: 0 } };
+    return Object.assign({ month: d.month }, ad);
+  });
+}
 function App() {
   var _useState = useState(false),
     _useState2 = _slicedToArray(_useState, 2),
@@ -1477,6 +1509,25 @@ function App() {
     fontWeight: 600,
     color: "#111827"
   });
+  // Zámek celého dokumentu (stejné heslo jako databáze klientů).
+  var _auth = useState(function () { try { return sessionStorage.getItem("hs_auth") === "1"; } catch (e) { return false; } });
+  var authed = _auth[0], setAuthed = _auth[1];
+  var _pw = useState(""), pwVal = _pw[0], setPwVal = _pw[1];
+  var tryAuth = function () { if (pwVal === "Hardsmile01") { setAuthed(true); try { sessionStorage.setItem("hs_auth", "1"); } catch (e) {} } else alert("Špatné heslo"); };
+  // Data pro vybraný měsíc (dlaždice v hlavním přehledu ukazují jen tento měsíc).
+  var sel = rows[selectedMonth] || rows[rows.length - 1] || {};
+  var selFixed = fixedForMonth(fixedByMonth, sel.month || lastMonth);
+  if (!authed) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }
+    }, /*#__PURE__*/React.createElement("div", { style: { textAlign: "center", maxWidth: 340 } },
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 40, marginBottom: 12 } }, "🔒"),
+      /*#__PURE__*/React.createElement("h2", { style: { fontSize: 18, fontWeight: 800, color: "#111827", margin: "0 0 4px" } }, "Hardsmile — Kalkulace proviz\xED"),
+      /*#__PURE__*/React.createElement("p", { style: { fontSize: 13, color: "#6b7280", margin: "0 0 16px" } }, "Zadej heslo pro př\xEDstup"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center" } },
+        /*#__PURE__*/React.createElement("input", { type: "password", autoFocus: true, value: pwVal, placeholder: "Heslo", onChange: function (e) { setPwVal(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter") tryAuth(); }, style: { padding: "10px 14px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 } }),
+        /*#__PURE__*/React.createElement("button", { onClick: tryAuth, style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: "#059669", color: "#fff", fontWeight: 700, cursor: "pointer" } }, "Odemknout"))));
+  }
   return /*#__PURE__*/React.createElement("div", {
     style: {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -1497,7 +1548,7 @@ function App() {
       fontSize: 14,
       marginBottom: 24
     }
-  }, "\u0158\xEDjen 2025 \u2013 Květen 2026 | Mar\u017Ee 70 % | Provize 40 % z \u010Dist\xE9ho obratu"), /*#__PURE__*/React.createElement("div", {
+  }, (rows[0] ? rows[0].label : "") + " – " + (rows[rows.length - 1] ? rows[rows.length - 1].label : "") + " | Marže 70 % | Provize 40 % z čist\xE9ho obratu"), /*#__PURE__*/React.createElement("div", {
     style: {
       backgroundColor: "#f0fdf4",
       border: "1px solid #bbf7d0",
@@ -1566,148 +1617,7 @@ function App() {
     style: {
       fontSize: 12
     }
-  }, includeFixed ? fmt(totalFixed) + " Kč/měs v kalkulaci" : "Pouze ad costs (kredity)"))), /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", gap: 10, marginBottom: 24, alignItems: "stretch", flexWrap: "wrap" }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "grid",
-      gridTemplateColumns: "repeat(2, 1fr)",
-      gap: 10,
-      flex: "2 1 300px"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: "#fff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      padding: "14px 16px"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#6b7280",
-      marginBottom: 3
-    }
-  }, "Obrat NEW"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 17,
-      fontWeight: 700,
-      color: "#2563eb"
-    }
-  }, fmt(totals.rev_new)), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#9ca3af",
-      marginTop: 2
-    }
-  }, totals.cnt_new, " obj")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: "#fff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      padding: "14px 16px"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#6b7280",
-      marginBottom: 3
-    }
-  }, "Ad costs celkem"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 17,
-      fontWeight: 700,
-      color: "#ef4444"
-    }
-  }, fmt(totals.ad_cost)), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#9ca3af",
-      marginTop: 2
-    }
-  }, numMonths, " m\u011Bs\xEDc\u016F")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: "#fff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      padding: "14px 16px"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#6b7280",
-      marginBottom: 3
-    }
-  }, "Fixn\xED N celkem"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 17,
-      fontWeight: 700,
-      color: "#b45309"
-    }
-  }, fmt(totalFixedPeriod)), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#9ca3af",
-      marginTop: 2
-    }
-  }, fmt(totalFixed), "/m\u011Bs")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: "#f3f4f6",
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      padding: "14px 16px"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#6b7280",
-      marginBottom: 3
-    }
-  }, "Provize / ", rows[rows.length - 1] ? rows[rows.length - 1].label : ""), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 17,
-      fontWeight: 700,
-      color: "#059669"
-    }
-  }, fmt(rows[rows.length - 1] ? rows[rows.length - 1].provize : 0), " K\u010D"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: "#9ca3af",
-      marginTop: 2
-    }
-  }, "posledn\xED měs\xEDc"))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: "#ecfdf5",
-      border: "2px solid #059669",
-      borderRadius: 10,
-      padding: "14px 18px",
-      flex: "3 1 360px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      flexWrap: "wrap",
-      gap: 12
-    }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    style: { fontSize: 12, fontWeight: 600, color: "#059669", marginBottom: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }
-  }, "Provize za ", /*#__PURE__*/React.createElement("select", {
-    value: selectedMonth,
-    onChange: function (e) { setSelectedMonth(parseInt(e.target.value)); },
-    style: { fontSize: 12, fontWeight: 700, color: "#059669", border: "1px solid #059669", borderRadius: 6, padding: "2px 6px", backgroundColor: "#fff", cursor: "pointer" }
-  }, rows.map(function (r, idx) {
-    return /*#__PURE__*/React.createElement("option", { key: r.month, value: idx }, r.label);
-  }))), /*#__PURE__*/React.createElement("div", {
-    style: { fontSize: 26, fontWeight: 800, color: "#059669" }
-  }, fmt(rows[selectedMonth] ? rows[selectedMonth].provize : 0), " Kč"), /*#__PURE__*/React.createElement("div", {
-    style: { marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }
-  }, [{ f: "rev_new", l: "Obrat NEW" }, { f: "rev_mo", l: "Obrat MO" }, { f: "rev_vo", l: "Obrat VO" }, { f: "cnt_new", l: "Počet NEW" }, { f: "cnt_mo", l: "Počet MO" }, { f: "cnt_vo", l: "Počet VO" }].map(function (fld) {
-    return /*#__PURE__*/React.createElement("label", { key: fld.f, style: { display: "flex", flexDirection: "column", fontSize: 10, color: "#047857", gap: 2 } }, fld.l, /*#__PURE__*/React.createElement("input", {
-      type: "number",
-      value: dataRows[selectedMonth] ? dataRows[selectedMonth][fld.f] : 0,
-      onChange: function (e) { updateRevField(selectedMonth, fld.f, e.target.value); },
-      style: { width: 90, fontSize: 12, padding: "3px 6px", border: "1px solid #a7f3d0", borderRadius: 5 }
-    }));
-  }))))), /*#__PURE__*/React.createElement("div", {
+  }, includeFixed ? fmt(totalFixed) + " Kč/měs v kalkulaci" : "Pouze ad costs (kredity)"))), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap", alignItems: "stretch" } }, /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 170px", backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 6 } }, "Přehled za měsíc"), /*#__PURE__*/React.createElement("select", { value: selectedMonth, onChange: function (e) { setSelectedMonth(parseInt(e.target.value)); }, style: { width: "100%", fontSize: 14, fontWeight: 700, color: "#111827", border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 8px", backgroundColor: "#fff", cursor: "pointer" } }, rows.map(function (r, idx) { return /*#__PURE__*/React.createElement("option", { key: r.month, value: idx }, r.label); }))), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Obrat NEW"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#2563eb" } }, fmt(sel.rev_new || 0)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, (sel.cnt_new || 0) + " obj")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Ad costs"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#ef4444" } }, fmt(sel.ad_cost || 0)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, "reklama")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Fixní náklady"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#b45309" } }, fmt(selFixed)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, "za měsíc")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Provize"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "#111827" } }, fmt(sel.provize || 0), " Kč"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, sel.label || ""))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 24
     }
@@ -2512,7 +2422,12 @@ function App() {
         label: "Kč/h"
       }]
     }))));
-  }(), /*#__PURE__*/React.createElement(FixedCostEditor, {
+  }(), /*#__PURE__*/React.createElement("div", { style: { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 } },
+    /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 4 } }, "Ruční úprava obratů — ", sel.label || selectedMonthLabel),
+    /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Přepíše živá data ze Shoptetu pro vybraný měsíc (uloží se sdíleně)."),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" } }, [{ f: "rev_new", l: "Obrat NEW" }, { f: "rev_mo", l: "Obrat MO" }, { f: "rev_vo", l: "Obrat VO" }, { f: "cnt_new", l: "Počet NEW" }, { f: "cnt_mo", l: "Počet MO" }, { f: "cnt_vo", l: "Počet VO" }].map(function (fld) {
+      return /*#__PURE__*/React.createElement("label", { key: fld.f, style: { display: "flex", flexDirection: "column", fontSize: 11, color: "#6b7280", gap: 3 } }, fld.l, /*#__PURE__*/React.createElement("input", { type: "number", value: dataRows[selectedMonth] ? dataRows[selectedMonth][fld.f] : 0, onChange: function (e) { updateRevField(selectedMonth, fld.f, e.target.value); }, style: { width: 100, fontSize: 13, padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 6 } }));
+    }))), /*#__PURE__*/React.createElement(FixedCostEditor, {
     costs: currentFixedList,
     onChange: updateFixedForMonth,
     month: selectedMonthStr,
@@ -2587,38 +2502,20 @@ async function loadFromSheets() {
     }
   });
 
-  // Historické měsíce mají hardcoded ad_cost (autoritativní). Měsíce s ad_cost===0
-  // (např. nové měsíce jako červen) doplní live součet ze sheetu.
-  var newData = DATA.map(function(d) {
-    if (d.ad_cost && d.ad_cost > 0) return d;
-    var ad = adByMonth[d.month];
-    if (!ad) return d;
-    var adTotal = ad.facebook.cost + ad.google.cost + ad.seznam.cost + ad.srovname.cost;
-    return Object.assign({}, d, { ad_cost: adTotal });
-  });
-
-  var newChannelData = DATA.map(function(d) {
-    var ym = d.month;
-    var ad = adByMonth[ym] || {facebook:{cost:0,value:0},google:{cost:0,value:0},seznam:{cost:0,value:0},srovname:{cost:0,value:0}};
-    return Object.assign({month: ym}, ad);
-  });
-
-  return { data: newData, channelData: newChannelData };
+  AD_BY_MONTH = adByMonth;
 }
 
 (async function init() {
   // Načtení všech zdrojů, ale s pojistkou – když se některý fetch zdrží,
   // aplikace se stejně vykreslí (max. čekání ~9 s), ať nikdy nezůstane viset.
   var loaders = (async function () {
-    try {
-      var sd = await loadFromSheets();
-      if (sd && sd.data && sd.data.length > 0) DATA = sd.data;
-      if (sd && sd.channelData && sd.channelData.length > 0) CHANNEL_DATA = sd.channelData;
-    } catch (e) { console.warn("Nelze načíst Google Sheets:", e); }
+    try { await loadFromSheets(); } catch (e) { console.warn("Nelze načíst ad costs:", e); }
     try { await loadShoptetRevenue(); } catch (e) {}
+    try { rebuildMonths(); } catch (e) { console.warn("rebuildMonths:", e); }
     try { await loadSharedIntoCache(); } catch (e) {}
   })();
   await Promise.race([loaders, new Promise(function (r) { setTimeout(r, 9000); })]);
+  try { rebuildMonths(); } catch (e) { console.warn("rebuildMonths:", e); }
   ReactDOM.render(/*#__PURE__*/React.createElement(App, null), document.getElementById("root"));
   var overlay = document.getElementById("gs-loading");
   if (overlay) overlay.parentNode.removeChild(overlay);
