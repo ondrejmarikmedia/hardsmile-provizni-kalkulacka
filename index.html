@@ -381,7 +381,7 @@ async function loadSharedIntoCache() {
   } catch (e) { console.warn("Nelze načíst sdílená data:", e); }
 }
 // Od tohoto měsíce (včetně) se obrat počítá živě ze Shoptetu; starší měsíce zůstávají ruční.
-var SHOPTET_LIVE_FROM = "2026-06";
+var SHOPTET_LIVE_FROM = "2026-05";
 // Načte živý obrat ze Shoptetu (přes Apps Script) a přepíše jím DATA pro měsíce >= SHOPTET_LIVE_FROM.
 async function loadShoptetRevenue() {
   if (!SHARED_STORE_URL) return;
@@ -1136,13 +1136,14 @@ function FixedCostEditor(_ref4) {
   }, "+ P\u0159idat polo\u017Eku"));
 }
 var CLS_COLORS = { NEW: "#1d4ed8", MO: "#f97316", VO: "#7c3aed" };
+var SHOPTET_GROUPS = ["", "Koncový zákazník", "VIP", "VO 10", "VO  30", "VO 35", "Velkoobchodní odběratel"];
 function CustomerTable(_ref5) {
   var storeUrl = _ref5.storeUrl,
     overrides = _ref5.overrides,
-    onSetClass = _ref5.onSetClass;
-  var _u1 = useState(false), _u1a = _slicedToArray(_u1, 2), open = _u1a[0], setOpen = _u1a[1];
-  var _u2 = useState(false), _u2a = _slicedToArray(_u2, 2), unlocked = _u2a[0], setUnlocked = _u2a[1];
-  var _u3 = useState(""), _u3a = _slicedToArray(_u3, 2), pw = _u3a[0], setPw = _u3a[1];
+    onSetClass = _ref5.onSetClass,
+    groupOverrides = _ref5.groupOverrides,
+    onSetGroup = _ref5.onSetGroup;
+  var _u1 = useState(true), _u1a = _slicedToArray(_u1, 2), open = _u1a[0], setOpen = _u1a[1];
   var _u4 = useState(null), _u4a = _slicedToArray(_u4, 2), rows = _u4a[0], setRows = _u4a[1];
   var _u5 = useState(""), _u5a = _slicedToArray(_u5, 2), q = _u5a[0], setQ = _u5a[1];
   var _u6 = useState("ALL"), _u6a = _slicedToArray(_u6, 2), fCls = _u6a[0], setFCls = _u6a[1];
@@ -1157,34 +1158,25 @@ function CustomerTable(_ref5) {
     setNewEmail("");
   };
   useEffect(function () {
-    if (!unlocked || rows !== null || !storeUrl) return;
+    if (!open || rows !== null || !storeUrl) return;
     fetch(storeUrl + (storeUrl.indexOf("?") >= 0 ? "&" : "?") + "customers=1")
       .then(function (r) { return r.json(); })
       .then(function (d) { setRows(Array.isArray(d) ? d : []); })
       .catch(function () { setRows([]); });
-  }, [unlocked]);
+  }, [open]);
   if (!open) {
     return /*#__PURE__*/React.createElement("div", { style: box }, /*#__PURE__*/React.createElement("button", {
       onClick: function () { setOpen(true); },
       style: { border: "none", background: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#374151", padding: 0 }
-    }, "🔒 Datab\xE1ze z\xE1kazn\xEDků (chr\xE1něno heslem)"));
+    }, "📋 Datab\xE1ze z\xE1kazn\xEDků"));
   }
-  if (!unlocked) {
-    return /*#__PURE__*/React.createElement("div", { style: box },
-      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 10 } }, "🔒 Datab\xE1ze z\xE1kazn\xEDků — zadej heslo"),
-      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
-        /*#__PURE__*/React.createElement("input", {
-          type: "password", value: pw, placeholder: "Heslo", autoFocus: true,
-          onChange: function (e) { setPw(e.target.value); },
-          onKeyDown: function (e) { if (e.key === "Enter") { if (pw === "Hardsmile01") setUnlocked(true); else alert("Špatn\xE9 heslo"); } },
-          style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 }
-        }),
-        /*#__PURE__*/React.createElement("button", { onClick: function () { if (pw === "Hardsmile01") setUnlocked(true); else alert("Špatn\xE9 heslo"); }, style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" } }, "Odemknout"),
-        /*#__PURE__*/React.createElement("button", { onClick: function () { setOpen(false); setPw(""); }, style: { padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280" } }, "Zavř\xEDt")
-      )
-    );
-  }
-  var eff = function (r) { return overrides[r.email] || r.cls; };
+  var effGroup = function (r) { return (groupOverrides && groupOverrides[r.email] != null) ? groupOverrides[r.email] : (r.grpName || ""); };
+  var isVoG = function (g) { return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g); };
+  var eff = function (r) {
+    if (overrides[r.email]) return overrides[r.email];
+    if (isVoG(effGroup(r))) return "VO";
+    return r.cls;
+  };
   var list = (rows || []).slice();
   // Ručně přidaní klienti (přes override), kteří ještě nemají žádnou objednávku v exportu.
   var present = {};
@@ -1206,10 +1198,10 @@ function CustomerTable(_ref5) {
   (rows || []).forEach(function (r) { totals[eff(r)] = (totals[eff(r)] || 0) + 1; });
   return /*#__PURE__*/React.createElement("div", { style: box },
     /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 } },
-      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151" } }, "🔓 Datab\xE1ze z\xE1kazn\xEDků ", rows ? "(" + rows.length + ") — NEW " + totals.NEW + " · MO " + totals.MO + " · VO " + totals.VO : ""),
-      /*#__PURE__*/React.createElement("button", { onClick: function () { setUnlocked(false); setOpen(false); setPw(""); }, style: { border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280", padding: "4px 10px", fontSize: 12 } }, "Zamknout")
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151" } }, "📋 Datab\xE1ze z\xE1kazn\xEDků ", rows ? "(" + rows.length + ") — NEW " + totals.NEW + " · MO " + totals.MO + " · VO " + totals.VO : ""),
+      /*#__PURE__*/React.createElement("button", { onClick: function () { setOpen(false); }, style: { border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#6b7280", padding: "4px 10px", fontSize: 12 } }, "Sbalit")
     ),
-    /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Změna zařazen\xED se od června 2026 prom\xEDtne do v\xFdpočtu (po obnoven\xED str\xE1nky). NEW = nov\xFd z\xE1kazn\xEDk (provize), MO = st\xE1vaj\xEDc\xED, VO = velkoobchod."),
+    /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Změna skupiny/zařazen\xED se prom\xEDtne do v\xFdpočtu (po obnoven\xED str\xE1nky). VIP a VO skupiny se poč\xEDtaj\xED jako velkoobchod (VO). NEW = nov\xFd z\xE1kazn\xEDk (provize), MO = st\xE1vaj\xEDc\xED."),
     /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" } },
       /*#__PURE__*/React.createElement("input", { style: _objectSpread(_objectSpread({}, ctrl), {}, { flex: 1, minWidth: 180 }), placeholder: "Hledat e-mail…", value: q, onChange: function (e) { setQ(e.target.value); } }),
       /*#__PURE__*/React.createElement("select", { style: ctrl, value: fCls, onChange: function (e) { setFCls(e.target.value); } },
@@ -1250,7 +1242,13 @@ function CustomerTable(_ref5) {
                 /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right" }) }, r.orders),
                 /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", fontWeight: 600 }) }, fmt(r.revenue)),
                 /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { color: "#6b7280" }) }, r.lastDate),
-                /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { color: "#6b7280", fontSize: 12 }) }, r.grpName || "—"),
+                /*#__PURE__*/React.createElement("td", { style: td }, /*#__PURE__*/React.createElement("select", {
+                  value: effGroup(r),
+                  onChange: function (e) { onSetGroup(r.email, e.target.value === (r.grpName || "") ? null : e.target.value); },
+                  style: { padding: "3px 6px", borderRadius: 5, border: "1px solid " + ((groupOverrides && groupOverrides[r.email] != null) ? "#7c3aed" : "#d1d5db"), fontSize: 12, cursor: "pointer", background: (groupOverrides && groupOverrides[r.email] != null) ? "#f9fafb" : "#fff", maxWidth: 150 }
+                }, SHOPTET_GROUPS.concat(SHOPTET_GROUPS.indexOf(effGroup(r)) < 0 ? [effGroup(r)] : []).map(function (g) {
+                  return /*#__PURE__*/React.createElement("option", { key: g, value: g }, g === "" ? "—" : g);
+                }))),
                 /*#__PURE__*/React.createElement("td", { style: td }, /*#__PURE__*/React.createElement("select", {
                   value: c,
                   onChange: function (e) { onSetClass(r.email, e.target.value === r.cls ? null : e.target.value); },
@@ -1351,6 +1349,17 @@ function App() {
       return next;
     });
   };
+  var _useState17 = useState(_store0.groupOverride || {}),
+    _useState18 = _slicedToArray(_useState17, 2),
+    groupOverride = _useState18[0],
+    setGroupOverride = _useState18[1];
+  var setCustomerGroup = function setCustomerGroup(email, group) {
+    setGroupOverride(function (prev) {
+      var next = Object.assign({}, prev);
+      if (group) next[email] = group; else delete next[email];
+      return next;
+    });
+  };
   // Automatické ukládání jen při skutečné úpravě (ne při prvním načtení),
   // aby se sdílená data nepřepsala výchozími, když se načtení nezdaří.
   var _didMount = useRef(false);
@@ -1363,6 +1372,7 @@ function App() {
   }, [hoursData]);
   useEffect(function () { if (!_didMount.current) return; saveStore({ voEmails: voEmails }); }, [voEmails]);
   useEffect(function () { if (!_didMount.current) return; saveStore({ classOverride: classOverride }); }, [classOverride]);
+  useEffect(function () { if (!_didMount.current) return; saveStore({ groupOverride: groupOverride }); }, [groupOverride]);
   useEffect(function () { _didMount.current = true; }, []);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
@@ -2435,7 +2445,9 @@ function App() {
   }), /*#__PURE__*/React.createElement(CustomerTable, {
     storeUrl: SHARED_STORE_URL,
     overrides: classOverride,
-    onSetClass: setCustomerClass
+    onSetClass: setCustomerClass,
+    groupOverrides: groupOverride,
+    onSetGroup: setCustomerGroup
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",

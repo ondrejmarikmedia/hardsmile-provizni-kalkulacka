@@ -137,17 +137,42 @@ function fetchOrders() {
   return orders;
 }
 
-// Zařadí objednávku/zákazníka do NEW/MO/VO. Priorita: ruční přepis → VO → seznam(MO) → NEW.
+// Ruční přepis skupiny per e-mail: { "email": "VIP" | "VO 35" | "Koncový zákazník" | ... }
+function loadGroupOverride() {
+  var m = {};
+  try {
+    var state = JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}");
+    var go = state.groupOverride || {};
+    Object.keys(go).forEach(function (k) { m[String(k).trim().toLowerCase()] = go[k]; });
+  } catch (e) {}
+  return m;
+}
+
+// Vrátí platnou skupinu zákazníka (ruční přepis má přednost před skupinou ze Shoptetu).
+function effectiveGroup(email, grpName, ctx) {
+  return (ctx.groupOverride[email] != null) ? ctx.groupOverride[email] : (grpName || "");
+}
+
+// Je skupina velkoobchodní (VO / Velkoobchod / VIP)?
+function isVoGroup(g) {
+  return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g);
+}
+
+// Zařadí objednávku/zákazníka do NEW/MO/VO. Priorita: ruční třída → skupina VO(vč. VIP) → seznam(MO) → NEW.
 function classify(email, grpType, grpName, ctx) {
   var ov = ctx.classOverride[email];
   if (ov === "NEW" || ov === "MO" || ov === "VO") return ov;
-  if (grpType === "customerGroupTypeWholesale" || /^VO/i.test(grpName) || /elkoobchod/.test(grpName) || ctx.voManual[email]) return "VO";
+  var hasGroupOv = ctx.groupOverride[email] != null;
+  var g = effectiveGroup(email, grpName, ctx);
+  // grpType ze Shoptetu bereme jen když skupina není ručně přepsaná
+  var typeVO = !hasGroupOv && grpType === "customerGroupTypeWholesale";
+  if (typeVO || isVoGroup(g) || ctx.voManual[email]) return "VO";
   if (ctx.seznam[email]) return "MO";
   return "NEW";
 }
 
 function loadClassCtx() {
-  return { seznam: loadSeznam(), voManual: loadManualVO(), classOverride: loadClassOverride() };
+  return { seznam: loadSeznam(), voManual: loadManualVO(), classOverride: loadClassOverride(), groupOverride: loadGroupOverride() };
 }
 
 function computeOrdersAgg() {
@@ -186,7 +211,8 @@ function computeCustomers() {
       orders: c.orders,
       revenue: Math.round(c.revenue),
       lastDate: c.lastDate.substring(0, 10),
-      grpName: c.grpName,
+      grpName: effectiveGroup(c.email, c.grpName, ctx),
+      shoptetGroup: c.grpName,
       cls: classify(c.email, c.grpType, c.grpName, ctx)
     };
   });
