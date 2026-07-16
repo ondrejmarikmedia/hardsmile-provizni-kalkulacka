@@ -370,6 +370,19 @@ function saveStore(patch) {
   } catch (e) {}
   pushShared();
 }
+// Okamžité uložení (bez debounce) — pro tlačítko „Uložit změny". Vrací Promise.
+function flushShared() {
+  if (_pushTimer) { clearTimeout(_pushTimer); _pushTimer = null; }
+  if (!SHARED_STORE_URL) return Promise.resolve();
+  try {
+    return fetch(SHARED_STORE_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(loadStore())
+    });
+  } catch (e) { return Promise.resolve(); }
+}
 // Při startu načte sdílený stav (fetch GET) a uloží do localStorage cache (App ho čte synchronně).
 async function loadSharedIntoCache() {
   if (!SHARED_STORE_URL) return;
@@ -1148,15 +1161,7 @@ function CustomerTable(_ref5) {
   var _u5 = useState(""), _u5a = _slicedToArray(_u5, 2), q = _u5a[0], setQ = _u5a[1];
   var _u6 = useState("ALL"), _u6a = _slicedToArray(_u6, 2), fCls = _u6a[0], setFCls = _u6a[1];
   var _u7 = useState("revenue"), _u7a = _slicedToArray(_u7, 2), sortKey = _u7a[0], setSortKey = _u7a[1];
-  var _u8 = useState(""), _u8a = _slicedToArray(_u8, 2), newEmail = _u8a[0], setNewEmail = _u8a[1];
-  var _u9 = useState("VO"), _u9a = _slicedToArray(_u9, 2), newCls = _u9a[0], setNewCls = _u9a[1];
   var box = { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 };
-  var addClient = function () {
-    var e = (newEmail || "").trim().toLowerCase();
-    if (!e) return;
-    onSetClass(e, newCls);
-    setNewEmail("");
-  };
   useEffect(function () {
     if (!open || rows !== null || !storeUrl) return;
     fetch(storeUrl + (storeUrl.indexOf("?") >= 0 ? "&" : "?") + "customers=1")
@@ -1213,15 +1218,6 @@ function CustomerTable(_ref5) {
         /*#__PURE__*/React.createElement("option", { value: "revenue" }, "Řadit: obrat"),
         /*#__PURE__*/React.createElement("option", { value: "orders" }, "Řadit: objednávky"),
         /*#__PURE__*/React.createElement("option", { value: "email" }, "Řadit: e-mail"))
-    ),
-    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } },
-      /*#__PURE__*/React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "#6b7280" } }, "+ Přidat klienta:"),
-      /*#__PURE__*/React.createElement("input", { style: _objectSpread(_objectSpread({}, ctrl), {}, { flex: 1, minWidth: 180 }), type: "email", placeholder: "email@klient.cz", value: newEmail, onChange: function (e) { setNewEmail(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter") addClient(); } }),
-      /*#__PURE__*/React.createElement("select", { style: ctrl, value: newCls, onChange: function (e) { setNewCls(e.target.value); } },
-        /*#__PURE__*/React.createElement("option", { value: "NEW" }, "NEW"),
-        /*#__PURE__*/React.createElement("option", { value: "MO" }, "MO"),
-        /*#__PURE__*/React.createElement("option", { value: "VO" }, "VO")),
-      /*#__PURE__*/React.createElement("button", { onClick: addClient, style: { padding: "8px 16px", border: "none", borderRadius: 6, backgroundColor: "#059669", color: "#fff", fontWeight: 600, cursor: "pointer" } }, "Přidat")
     ),
     rows === null
       ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af", padding: "20px 0", textAlign: "center" } }, "Načítám zákazníky…")
@@ -1524,6 +1520,8 @@ function App() {
   var authed = _auth[0], setAuthed = _auth[1];
   var _pw = useState(""), pwVal = _pw[0], setPwVal = _pw[1];
   var tryAuth = function () { if (pwVal === "Hardsmile01") { setAuthed(true); try { sessionStorage.setItem("hs_auth", "1"); } catch (e) {} } else alert("Špatné heslo"); };
+  var _saved = useState(false), savedState = _saved[0], setSavedState = _saved[1];
+  var doSave = function () { flushShared(); setSavedState(true); setTimeout(function () { setSavedState(false); }, 2000); };
   // Data pro vybraný měsíc (dlaždice v hlavním přehledu ukazují jen tento měsíc).
   var sel = rows[selectedMonth] || rows[rows.length - 1] || {};
   var selFixed = fixedForMonth(fixedByMonth, sel.month || lastMonth);
@@ -1546,13 +1544,18 @@ function App() {
       padding: "24px 16px",
       color: "#111827"
     }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }
   }, /*#__PURE__*/React.createElement("h1", {
     style: {
       fontSize: 22,
       fontWeight: 700,
       marginBottom: 4
     }
-  }, "Hardsmile \u2014 Kalkulace proviz\xED"), /*#__PURE__*/React.createElement("p", {
+  }, "Hardsmile \u2014 Kalkulace proviz\xED"), /*#__PURE__*/React.createElement("button", {
+    onClick: doSave,
+    style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
+  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny")), /*#__PURE__*/React.createElement("p", {
     style: {
       color: "#6b7280",
       fontSize: 14,
