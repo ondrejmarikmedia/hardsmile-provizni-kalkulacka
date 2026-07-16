@@ -114,6 +114,9 @@ function fetchOrders() {
   var header = parseCsvLine(lines[0]).map(function (h) { return h.replace(/"/g, "").trim(); });
   var col = {};
   header.forEach(function (h, i) { col[h] = i; });
+  // Sloupec s poznámkou (různé možné názvy v Shoptet exportu) – zdroj Repetiv se propisuje sem.
+  var noteCol = -1;
+  Object.keys(col).forEach(function (h) { if (/pozn|note|remark/i.test(h)) noteCol = col[h]; });
   var seenId = {}, orders = [];
   for (var i = 1; i < lines.length; i++) {
     if (!lines[i]) continue;
@@ -131,7 +134,8 @@ function fetchOrders() {
       email: (f[col["email"]] || "").toLowerCase(),
       grpType: f[col["customerGroupType"]] || "",
       grpName: f[col["customerGroupName"]] || "",
-      price: num(f[col["totalPriceWithoutVat"]])
+      price: num(f[col["totalPriceWithoutVat"]]),
+      note: (noteCol >= 0 ? (f[noteCol] || "") : "")
     });
   }
   return orders;
@@ -182,11 +186,13 @@ function computeOrdersAgg() {
   orders.forEach(function (o) {
     if (o.date.length < 7) return;
     var ym = o.date.substring(0, 7);
-    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0 };
+    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, rev_rep: 0, cnt_rep: 0 };
     var cls = classify(o.email, o.grpType, o.grpName, ctx);
     if (cls === "VO") { agg[ym].rev_vo += o.price; agg[ym].cnt_vo++; }
     else if (cls === "MO") { agg[ym].rev_mo += o.price; agg[ym].cnt_mo++; }
     else { agg[ym].rev_new += o.price; agg[ym].cnt_new++; }
+    // Repetiv (podle poznámky) – jen informativní rozpad, objednávky zůstávají ve své třídě (typicky NEW).
+    if (/repetiv/i.test(o.note)) { agg[ym].rev_rep += o.price; agg[ym].cnt_rep++; }
   });
   return agg;
 }
