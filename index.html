@@ -952,17 +952,26 @@ function BarSegment(_ref3) {
   var value = _ref3.value,
     max = _ref3.max,
     color = _ref3.color,
-    label = _ref3.label;
+    label = _ref3.label,
+    stripe = _ref3.stripe;
+  if (value <= 0) return null;
   var pct = max > 0 ? value / max * 100 : 0;
-  if (pct < 1) return null;
+  if (stripe) { if (pct < 1.4) pct = 1.4; } // drobný Repetiv ať je vždy vidět
+  else if (pct < 1) return null;
+  // Repetiv = součást NEW → světle modrá se šrafováním tmavě modrou
+  var bg = stripe
+    ? "repeating-linear-gradient(45deg, #93c5fd, #93c5fd 4px, #1e3a8a 4px, #1e3a8a 7px)"
+    : color;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       width: pct + "%",
-      backgroundColor: color,
+      background: bg,
       height: "100%",
       display: "flex",
       alignItems: "center",
-      justifyContent: "center",
+      justifyContent: stripe ? "flex-start" : "center",
+      paddingLeft: stripe ? 4 : 0,
+      boxSizing: "border-box",
       fontSize: 11,
       color: "#fff",
       fontWeight: 600,
@@ -970,7 +979,7 @@ function BarSegment(_ref3) {
       whiteSpace: "nowrap"
     },
     title: label + ": " + fmt(value) + " Kč"
-  }, pct > 12 ? fmt(value) : "");
+  }, (!stripe && pct > 12) ? fmt(value) : "");
 }
 function FixedCostEditor(_ref4) {
   var costs = _ref4.costs,
@@ -1702,15 +1711,16 @@ function App() {
         backgroundColor: "#f1f5f9"
       }
     }, /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_rep || 0,
+      max: maxRev,
+      color: "#93c5fd",
+      label: "z toho Repetiv",
+      stripe: true
+    }), /*#__PURE__*/React.createElement(BarSegment, {
       value: r.rev_new - (r.rev_rep || 0),
       max: maxRev,
       color: "#2563eb",
       label: "NEW"
-    }), /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_rep || 0,
-      max: maxRev,
-      color: "#93c5fd",
-      label: "Repetiv"
     }), /*#__PURE__*/React.createElement(BarSegment, {
       value: r.rev_mo,
       max: maxRev,
@@ -1757,11 +1767,11 @@ function App() {
       display: "inline-block",
       width: 10,
       height: 10,
-      backgroundColor: "#93c5fd",
+      background: "repeating-linear-gradient(45deg, #93c5fd, #93c5fd 2px, #1e3a8a 2px, #1e3a8a 4px)",
       borderRadius: 2,
       marginRight: 4
     }
-  }), "z toho Repetiv"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+  }), "z toho Repetiv (v NEW)"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
     style: {
       display: "inline-block",
       width: 10,
