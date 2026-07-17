@@ -107,20 +107,41 @@ function loadClassOverride() {
   return m;
 }
 
+// Rozparsuje celý CSV (oddělovač ;) na řádky-pole. Správně zvládá uvozovky a
+// VÍCEŘÁDKOVÉ hodnoty (poznámka přes více řádků nerozbije záznam).
+function parseCsvAll(text) {
+  var rows = [], row = [], cur = "", inQ = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else { inQ = false; } }
+      else { cur += ch; }
+    } else {
+      if (ch === '"') { inQ = true; }
+      else if (ch === ';') { row.push(cur); cur = ""; }
+      else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ""; }
+      else if (ch === '\r') { /* přeskoč */ }
+      else { cur += ch; }
+    }
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
 // Stáhne export a vrátí 1 řádek na objednávku (deduplikováno podle id).
 function fetchOrders() {
   var text = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true }).getContentText("windows-1250");
-  var lines = text.split(/\r?\n/);
-  var header = parseCsvLine(lines[0]).map(function (h) { return h.replace(/"/g, "").trim(); });
+  var rows = parseCsvAll(text);
+  if (!rows.length) return [];
+  var header = rows[0].map(function (h) { return h.trim(); });
   var col = {};
   header.forEach(function (h, i) { col[h] = i; });
-  // Sloupec s poznámkou (různé možné názvy v Shoptet exportu) – zdroj Repetiv se propisuje sem.
+  // Sloupec s poznámkou (zdroj Repetiv se propisuje do poznámky e-shopu, např. "shopRemark").
   var noteCol = -1;
   Object.keys(col).forEach(function (h) { if (/pozn|note|remark/i.test(h)) noteCol = col[h]; });
   var seenId = {}, orders = [];
-  for (var i = 1; i < lines.length; i++) {
-    if (!lines[i]) continue;
-    var f = parseCsvLine(lines[i]).map(function (x) { return x.replace(/^"|"$/g, ""); });
+  for (var i = 1; i < rows.length; i++) {
+    var f = rows[i];
     var id = f[col["id"]];
     if (!id || seenId[id]) continue;
     var status = f[col["statusName"]] || "";
