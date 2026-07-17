@@ -1692,10 +1692,15 @@ function App() {
         backgroundColor: "#f1f5f9"
       }
     }, /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_new,
+      value: r.rev_new - (r.rev_rep || 0),
       max: maxRev,
       color: "#2563eb",
       label: "NEW"
+    }), /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_rep || 0,
+      max: maxRev,
+      color: "#93c5fd",
+      label: "Repetiv"
     }), /*#__PURE__*/React.createElement(BarSegment, {
       value: r.rev_mo,
       max: maxRev,
@@ -1738,6 +1743,15 @@ function App() {
       marginRight: 4
     }
   }), "NEW"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      backgroundColor: "#93c5fd",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "z toho Repetiv"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
     style: {
       display: "inline-block",
       width: 10,
