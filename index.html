@@ -738,15 +738,18 @@ var CATEGORIES = ["Marketingové nástroje", "Provozní SW", "Obecné"];
 var MARGIN = 0.70;
 var COMMISSION_RATE = 0.40;
 // Vrátí seznam fixních položek platný pro daný měsíc (dědí dopředu z dřívějšího měsíce).
+// Statickou položku „Repetiv" ignorujeme – Repetiv je nově dynamický (1290 + 2 %).
 function getFixedList(fixedByMonth, month) {
-  if (fixedByMonth && fixedByMonth[month]) return fixedByMonth[month];
-  var best = null;
-  if (fixedByMonth) {
+  var list = DEFAULT_FIXED_COSTS;
+  if (fixedByMonth && fixedByMonth[month]) list = fixedByMonth[month];
+  else if (fixedByMonth) {
+    var best = null;
     Object.keys(fixedByMonth).forEach(function (k) {
       if (k <= month && (best === null || k > best)) best = k;
     });
+    if (best) list = fixedByMonth[best];
   }
-  return best ? fixedByMonth[best] : DEFAULT_FIXED_COSTS;
+  return list.filter(function (c) { return !/^repetiv/i.test((c.name || "").trim()); });
 }
 // Součet fixních nákladů platný pro daný měsíc.
 function fixedForMonth(fixedByMonth, month) {
