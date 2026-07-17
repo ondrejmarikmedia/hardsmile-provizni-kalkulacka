@@ -714,16 +714,15 @@ var DEFAULT_FIXED_COSTS = [{
   amount: 5000,
   category: "Provozní SW"
 }, {
-  id: 4,
-  name: "Repetiv",
-  amount: 1323.6,
-  category: "Marketingové nástroje"
-}, {
   id: 5,
   name: "Retino",
   amount: 645.41,
   category: "Marketingové nástroje"
 }];
+// Repetiv se nepočítá jako fixní položka – je DYNAMICKÝ: 1290 + 2 % z Repetiv tržeb daného měsíce.
+var REPETIV_FIXED_BASE = 1290;
+var REPETIV_FIXED_RATE = 0.02;
+function repetivCostFor(revRep) { return REPETIV_FIXED_BASE + REPETIV_FIXED_RATE * (revRep || 0); }
 // Přepisy fixních nákladů pro konkrétní měsíce. Měsíc bez záznamu dědí z nejbližšího
 // dřívějšího měsíce s vlastním nastavením, jinak z DEFAULT_FIXED_COSTS.
 // Zde: od června 2026 je Ecomail 1743 místo 847.
@@ -732,7 +731,6 @@ var DEFAULT_FIXED_BY_MONTH = {
     { id: 1, name: "B2Metrics", amount: 750, category: "Marketingové nástroje" },
     { id: 2, name: "Ecomail", amount: 1743, category: "Marketingové nástroje" },
     { id: 3, name: "Shoptet", amount: 5000, category: "Provozní SW" },
-    { id: 4, name: "Repetiv", amount: 1323.6, category: "Marketingové nástroje" },
     { id: 5, name: "Retino", amount: 645.41, category: "Marketingové nástroje" }
   ]
 };
@@ -975,10 +973,12 @@ function FixedCostEditor(_ref4) {
   var costs = _ref4.costs,
     onChange = _ref4.onChange,
     month = _ref4.month,
-    monthLabel = _ref4.monthLabel;
+    monthLabel = _ref4.monthLabel,
+    repetivAmount = _ref4.repetivAmount,
+    repetivRev = _ref4.repetivRev;
   var total = costs.reduce(function (s, c) {
     return s + (parseFloat(c.amount) || 0);
-  }, 0);
+  }, 0) + (repetivAmount || 0);
   var updateCost = function updateCost(id, field, value) {
     onChange(costs.map(function (c) {
       return c.id === id ? _objectSpread(_objectSpread({}, c), {}, _defineProperty({}, field, value)) : c;
@@ -1146,7 +1146,9 @@ function FixedCostEditor(_ref4) {
       fontSize: 13,
       marginTop: 4
     }
-  }, "+ P\u0159idat polo\u017Eku"));
+  }, "+ P\u0159idat polo\u017Eku"), /*#__PURE__*/React.createElement("div", {
+    style: { marginTop: 12, padding: "8px 12px", backgroundColor: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, fontSize: 12, color: "#6b7280" }
+  }, "Repetiv (dynamicky): 1290 + 2 % z Repetiv tr\u017Eeb (", fmt(repetivRev || 0), " K\u010D) = ", /*#__PURE__*/React.createElement("strong", { style: { color: "#7c3aed" } }, fmt(repetivAmount || 0), " K\u010D")));
 }
 var CLS_COLORS = { NEW: "#1d4ed8", MO: "#f97316", VO: "#7c3aed" };
 var SHOPTET_GROUPS = ["", "Koncový zákazník", "VIP", "VO 10", "VO  30", "VO 35", "Velkoobchodní odběratel"];
@@ -1394,14 +1396,19 @@ function App() {
       return next;
     });
   };
-  // Fixní náklady aktuálního (posledního) měsíce.
-  var totalFixed = fixedForMonth(fixedByMonth, lastMonth);
+  // Repetiv tržby (z poznámky) po měsících — pro dynamický náklad Repetiv.
+  var revRepByMonth = {};
+  dataRows.forEach(function (d) { revRepByMonth[d.month] = d.rev_rep || 0; });
+  var repetivCostMonth = function repetivCostMonth(month) { return repetivCostFor(revRepByMonth[month] || 0); };
+  // Fixní náklady měsíce = statické položky + DYNAMICKÝ Repetiv (1290 + 2 % z Repetiv tržeb).
+  var fixedTotalFor = function fixedTotalFor(month) { return fixedForMonth(fixedByMonth, month) + repetivCostMonth(month); };
+  var totalFixed = fixedTotalFor(lastMonth);
   // Skutečný součet fixních nákladů přes všechny měsíce.
   var totalFixedPeriod = dataRows.reduce(function (s, m) {
-    return s + fixedForMonth(fixedByMonth, m.month);
+    return s + fixedTotalFor(m.month);
   }, 0);
   var effectiveFixedFn = function effectiveFixedFn(month) {
-    return includeFixed ? fixedForMonth(fixedByMonth, month) : 0;
+    return includeFixed ? fixedTotalFor(month) : 0;
   };
   var rows = useMemo(function () {
     return calculate(dataRows, includeVoCredits, effectiveFixedFn);
@@ -1525,7 +1532,7 @@ function App() {
   var doSave = function () { flushShared(); setSavedState(true); setTimeout(function () { setSavedState(false); }, 2000); };
   // Data pro vybraný měsíc (dlaždice v hlavním přehledu ukazují jen tento měsíc).
   var sel = rows[selectedMonth] || rows[rows.length - 1] || {};
-  var selFixed = fixedForMonth(fixedByMonth, sel.month || lastMonth);
+  var selFixed = fixedTotalFor(sel.month || lastMonth);
   if (!authed) {
     return /*#__PURE__*/React.createElement("div", {
       style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }
@@ -1864,7 +1871,7 @@ function App() {
       style: _objectSpread(_objectSpread({}, cellBase), {}, {
         color: "#b45309"
       })
-    }, fmt(fixedForMonth(fixedByMonth, r.month))), /*#__PURE__*/React.createElement("td", {
+    }, fmt(fixedTotalFor(r.month))), /*#__PURE__*/React.createElement("td", {
       style: cellBase
     }, fmtPct(r.creditShare)), /*#__PURE__*/React.createElement("td", {
       style: _objectSpread(_objectSpread({}, cellBase), {}, {
@@ -1971,7 +1978,7 @@ function App() {
     return c.amount > 0;
   }).map(function (c) {
     return c.name + " " + fmt(c.amount);
-  }).join(" + ") + " = " + fmt(totalFixed) + " Kč/měs" : "vypnuto"), function () {
+  }).concat(["Repetiv " + fmt(repetivCostMonth(lastMonth)) + " (dyn.)"]).join(" + ") + " = " + fmt(totalFixed) + " Kč/měs" : "vypnuto"), function () {
     var monthLabels = DATA.map(function (d) {
       return d.label.replace("2025", "'25").replace("2026", "'26").replace(" *", "");
     });
@@ -2459,7 +2466,9 @@ function App() {
     costs: currentFixedList,
     onChange: updateFixedForMonth,
     month: selectedMonthStr,
-    monthLabel: selectedMonthLabel
+    monthLabel: selectedMonthLabel,
+    repetivAmount: repetivCostMonth(selectedMonthStr),
+    repetivRev: revRepByMonth[selectedMonthStr] || 0
   }), /*#__PURE__*/React.createElement(CustomerTable, {
     storeUrl: SHARED_STORE_URL,
     overrides: classOverride,
