@@ -383,11 +383,18 @@ function flushShared() {
     });
   } catch (e) { return Promise.resolve(); }
 }
+// fetch s časovým limitem — aby se načítání nikdy nezaseklo na pomalém požadavku.
+function fetchWithTimeout(url, ms) {
+  var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var t = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 12000);
+  var opts = ctrl ? { signal: ctrl.signal } : {};
+  return fetch(url, opts).then(function (r) { clearTimeout(t); return r; }, function (e) { clearTimeout(t); throw e; });
+}
 // Při startu načte sdílený stav (fetch GET) a uloží do localStorage cache (App ho čte synchronně).
 async function loadSharedIntoCache() {
   if (!SHARED_STORE_URL) return;
   try {
-    var shared = await fetch(SHARED_STORE_URL).then(function (r) { return r.json(); });
+    var shared = await fetchWithTimeout(SHARED_STORE_URL, 12000).then(function (r) { return r.json(); });
     if (shared && typeof shared === "object" && Object.keys(shared).length) {
       localStorage.setItem(LS_KEY, JSON.stringify(shared));
     }
@@ -399,7 +406,7 @@ var SHOPTET_LIVE_FROM = "2026-05";
 async function loadShoptetRevenue() {
   if (!SHARED_STORE_URL) return;
   try {
-    var agg = await fetch(SHARED_STORE_URL + (SHARED_STORE_URL.indexOf("?") >= 0 ? "&" : "?") + "orders=1")
+    var agg = await fetchWithTimeout(SHARED_STORE_URL + (SHARED_STORE_URL.indexOf("?") >= 0 ? "&" : "?") + "orders=1", 15000)
       .then(function (r) { return r.json(); });
     if (agg && typeof agg === "object") ORDERS_AGG = agg;
   } catch (e) { console.warn("Nelze načíst obrat ze Shoptetu:", e); }
@@ -1341,7 +1348,14 @@ function App() {
     _useState10 = _slicedToArray(_useState9, 2),
     dataRows = _useState10[0],
     setDataRows = _useState10[1];
-  var _useState11 = useState(DATA.length - 1),
+  var _defaultMonthIdx = (function () {
+    for (var i = DATA.length - 1; i >= 0; i--) {
+      var d = DATA[i];
+      if ((d.rev_new || 0) + (d.rev_mo || 0) + (d.rev_vo || 0) > 0) return i;
+    }
+    return DATA.length - 1;
+  })();
+  var _useState11 = useState(_defaultMonthIdx),
     _useState12 = _slicedToArray(_useState11, 2),
     selectedMonth = _useState12[0],
     setSelectedMonth = _useState12[1];
@@ -1572,10 +1586,15 @@ function App() {
       fontWeight: 700,
       marginBottom: 4
     }
-  }, "Hardsmile \u2014 Kalkulace proviz\xED"), /*#__PURE__*/React.createElement("button", {
+  }, "Hardsmile \u2014 Kalkulace proviz\xED"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8, flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: function () { try { window.location.reload(); } catch (e) {} },
+    style: { padding: "10px 18px", border: "1px solid #059669", borderRadius: 8, backgroundColor: "#fff", color: "#059669", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
+  }, "\ud83d\udd04 Na\u010d\u00edst"), /*#__PURE__*/React.createElement("button", {
     onClick: doSave,
     style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
-  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny")), /*#__PURE__*/React.createElement("p", {
+  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny"))), /*#__PURE__*/React.createElement("p", {
     style: {
       color: "#6b7280",
       fontSize: 14,
@@ -2537,7 +2556,7 @@ function normSource(s) {
 async function loadFromSheets() {
   var adRows = [];
   try {
-    adRows = await fetch(GVIZ_BASE + "Sheet1").then(function(r){ return r.text(); }).then(parseCsv);
+    adRows = await fetchWithTimeout(GVIZ_BASE + "Sheet1", 15000).then(function(r){ return r.text(); }).then(parseCsv);
   } catch(e) {
     console.warn("Nelze načíst ad costs ze Sheets:", e);
   }
@@ -2558,15 +2577,15 @@ async function loadFromSheets() {
 }
 
 (async function init() {
-  // Načtení všech zdrojů, ale s pojistkou – když se některý fetch zdrží,
-  // aplikace se stejně vykreslí (max. čekání ~9 s), ať nikdy nezůstane viset.
-  var loaders = (async function () {
-    try { await loadFromSheets(); } catch (e) { console.warn("Nelze načíst ad costs:", e); }
-    try { await loadShoptetRevenue(); } catch (e) {}
-    try { rebuildMonths(); } catch (e) { console.warn("rebuildMonths:", e); }
-    try { await loadSharedIntoCache(); } catch (e) {}
-  })();
-  await Promise.race([loaders, new Promise(function (r) { setTimeout(r, 9000); })]);
+  // Všechny zdroje načteme PARALELNĚ. Každý fetch má vlastní časový limit (viz fetchWithTimeout),
+  // takže se init nikdy nezasekne, ale zároveň počkáme na data, než vykreslíme (žádné prázdné načtení).
+  try {
+    await Promise.all([
+      loadFromSheets().catch(function (e) { console.warn("ad costs:", e); }),
+      loadShoptetRevenue().catch(function () {}),
+      loadSharedIntoCache().catch(function () {})
+    ]);
+  } catch (e) {}
   try { rebuildMonths(); } catch (e) { console.warn("rebuildMonths:", e); }
   ReactDOM.render(/*#__PURE__*/React.createElement(App, null), document.getElementById("root"));
   var overlay = document.getElementById("gs-loading");
