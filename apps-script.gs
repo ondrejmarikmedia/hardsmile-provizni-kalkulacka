@@ -20,6 +20,8 @@ function doGet(e) {
     body = getOrdersAgg();
   } else if (p.customers) {
     body = JSON.stringify(computeCustomers());
+  } else if (p.products) {
+    body = getProductsAgg();
   } else {
     body = PropertiesService.getScriptProperties().getProperty("STATE") || "{}";
   }
@@ -37,6 +39,7 @@ function doPost(e) {
     PropertiesService.getScriptProperties().setProperty("STATE", body);
     // Ruční VO seznam se mohl změnit → zneplatni cache agregace, ať se hned projeví.
     try { CacheService.getScriptCache().remove("ORDERS_AGG"); } catch (ce) {}
+    try { CacheService.getScriptCache().remove("PRODUCTS_AGG"); } catch (ce2) {}
     return ContentService.createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -53,6 +56,87 @@ function getOrdersAgg() {
   var json = JSON.stringify(computeOrdersAgg());
   try { cache.put("ORDERS_AGG", json, 3600); } catch (e) {}
   return json;
+}
+
+// ===== Prodeje produktů po měsících =====
+function getProductsAgg() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get("PRODUCTS_AGG");
+  if (cached) return cached;
+  var json = JSON.stringify(computeProductsAgg());
+  try { cache.put("PRODUCTS_AGG", json, 3600); } catch (e) {}
+  return json;
+}
+// Zařazení produktu podle názvu. null = vynechat (tip pro skladníka, členství).
+function classifyProductGroup(n) {
+  if (/kostk/i.test(n)) return "Kostky";
+  if (/gel/i.test(n)) return "Gel";
+  if (/olej/i.test(n)) return "Olej";
+  if (/5\s*\+\s*1/.test(n)) return "5+1 ZDARMA";
+  if (/3\s*x/i.test(n)) return "3x VÁŠEŇ";
+  if (/XXL/i.test(n)) return "Balení XXL";
+  if (/single|pyl[tť]/i.test(n)) return "Single/pyltíček";
+  if (/skladn|[čc]lenstv|member|p[řr]edplatn/i.test(n)) return null;
+  return "Ostatní";
+}
+// Počet dávek na kus (z názvu, např. "6 dávek"). Když chybí, 1.
+function doseCount(n) {
+  var m = String(n).match(/(\d+)\s*d[áa]v/i);
+  return m ? parseInt(m[1], 10) : 1;
+}
+// Příchuť z názvu (zatím Citrónová vs základní "12 bylin v medu").
+function productFlavor(n) {
+  return /citr/i.test(n) ? "Citrónová" : "12 bylin v medu";
+}
+// Stáhne položky objednávek (řádky typu product), bez dedup, bez storn.
+function fetchOrderItems() {
+  var text = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true }).getContentText("windows-1250");
+  var rows = parseCsvAll(text);
+  if (!rows.length) return [];
+  var header = rows[0].map(function (h) { return h.trim(); });
+  var col = {};
+  header.forEach(function (h, i) { col[h] = i; });
+  function findCol(re, fallback) {
+    if (col[fallback] != null) return col[fallback];
+    var idx = -1;
+    Object.keys(col).forEach(function (h) { if (re.test(h)) idx = col[h]; });
+    return idx;
+  }
+  var cDate = col["date"], cStatus = col["statusName"], cType = col["orderItemType"];
+  var cName = findCol(/n[áa]zev|item.*name|polo[žz]k/i, "orderItemName");
+  var cAmt = findCol(/po[čc]et|mno[žz]stv|amount|qty/i, "orderItemAmount");
+  var items = [];
+  for (var i = 1; i < rows.length; i++) {
+    var f = rows[i];
+    if ((f[cType] || "") !== "product") continue;
+    var st = f[cStatus] || "";
+    if (/storn|zrušen|vrácen|refund/i.test(st)) continue;
+    var date = f[cDate] || "";
+    if (date.length < 7) continue;
+    var amt = num(cAmt >= 0 ? f[cAmt] : "1");
+    if (!(amt > 0)) amt = 1;
+    items.push({ ym: date.substring(0, 7), name: (cName >= 0 ? f[cName] : "") || "", amt: amt });
+  }
+  return items;
+}
+// Agregace prodejů po měsících: products (ks), flavors (dávky), standalone (ks).
+function computeProductsAgg() {
+  var items = fetchOrderItems();
+  var agg = {};
+  items.forEach(function (it) {
+    if (!agg[it.ym]) agg[it.ym] = { products: {}, flavors: {}, standalone: {} };
+    var a = agg[it.ym];
+    var g = classifyProductGroup(it.name);
+    if (!g) return;
+    a.products[g] = (a.products[g] || 0) + it.amt;
+    if (g === "Kostky" || g === "Gel" || g === "Olej") {
+      a.standalone[g] = (a.standalone[g] || 0) + it.amt;
+    } else if (g !== "Ostatní") {
+      var fl = productFlavor(it.name);
+      a.flavors[fl] = (a.flavors[fl] || 0) + it.amt * doseCount(it.name);
+    }
+  });
+  return agg;
 }
 
 function parseCsvLine(line) {

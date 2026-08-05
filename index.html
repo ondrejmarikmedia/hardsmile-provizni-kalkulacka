@@ -1326,6 +1326,78 @@ function rebuildMonths() {
     return Object.assign({ month: d.month }, ad);
   });
 }
+// ===== Prodeje produktů (koláčové grafy) =====
+var PRODUCT_COLORS = ["#2563eb", "#f59e0b", "#8b5cf6", "#10b981", "#0ea5e9", "#eab308", "#ec4899", "#14b8a6", "#a855f7", "#f97316"];
+var STANDALONE_COLORS = { "Kostky": "#ef4444", "Gel": "#0ea5e9", "Olej": "#eab308" };
+function PieChart(_refP) {
+  var data = _refP.data, size = _refP.size || 150;
+  var total = data.reduce(function (s, d) { return s + (d.value || 0); }, 0);
+  var r = size / 2 - 1, cx = size / 2, cy = size / 2;
+  if (total <= 0) {
+    return /*#__PURE__*/React.createElement("svg", { width: size, height: size },
+      /*#__PURE__*/React.createElement("circle", { cx: cx, cy: cy, r: r, fill: "#f1f5f9" }),
+      /*#__PURE__*/React.createElement("text", { x: cx, y: cy, textAnchor: "middle", dominantBaseline: "central", fontSize: 11, fill: "#9ca3af" }, "—"));
+  }
+  var ang = -Math.PI / 2;
+  var slices = data.filter(function (d) { return d.value > 0; }).map(function (d, i) {
+    var frac = d.value / total;
+    if (frac >= 0.999) { return /*#__PURE__*/React.createElement("circle", { key: i, cx: cx, cy: cy, r: r, fill: d.color }); }
+    var a2 = ang + frac * 2 * Math.PI;
+    var large = frac > 0.5 ? 1 : 0;
+    var x1 = cx + r * Math.cos(ang), y1 = cy + r * Math.sin(ang);
+    var x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
+    var dstr = "M " + cx + " " + cy + " L " + x1.toFixed(2) + " " + y1.toFixed(2) + " A " + r + " " + r + " 0 " + large + " 1 " + x2.toFixed(2) + " " + y2.toFixed(2) + " Z";
+    ang = a2;
+    return /*#__PURE__*/React.createElement("path", { key: i, d: dstr, fill: d.color, stroke: "#fff", strokeWidth: 1 });
+  });
+  return /*#__PURE__*/React.createElement("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size }, slices);
+}
+function pieBlock(title, note, data) {
+  var total = data.reduce(function (s, d) { return s + (d.value || 0); }, 0);
+  var td = { padding: "4px 8px", fontSize: 12, borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" };
+  return /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 320px", minWidth: 280 } },
+    /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 2 } }, title),
+    note ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginBottom: 8 } }, note) : null,
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" } },
+      /*#__PURE__*/React.createElement(PieChart, { data: data, size: 150 }),
+      /*#__PURE__*/React.createElement("table", { style: { borderCollapse: "collapse", flex: 1, minWidth: 150 } },
+        /*#__PURE__*/React.createElement("tbody", null, data.map(function (d, i) {
+          var pct = total > 0 ? Math.round(d.value / total * 100) : 0;
+          return /*#__PURE__*/React.createElement("tr", { key: i },
+            /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { width: 12 }) }, /*#__PURE__*/React.createElement("span", { style: { display: "inline-block", width: 10, height: 10, borderRadius: 2, backgroundColor: d.color } })),
+            /*#__PURE__*/React.createElement("td", { style: td }, d.label),
+            /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", fontWeight: 600 }) }, fmt(d.value), d.unit ? " " + d.unit : ""),
+            /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", color: "#9ca3af" }) }, pct, " %"));
+        }))))
+  );
+}
+function ProductSales(_refPS) {
+  var storeUrl = _refPS.storeUrl, month = _refPS.month, monthLabel = _refPS.monthLabel;
+  var _ps = useState(null), agg = _ps[0], setAgg = _ps[1];
+  useEffect(function () {
+    if (agg !== null || !storeUrl) return;
+    fetch(storeUrl + (storeUrl.indexOf("?") >= 0 ? "&" : "?") + "products=1")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setAgg(d && typeof d === "object" ? d : {}); })
+      .catch(function () { setAgg({}); });
+  }, []);
+  var box = { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 };
+  var p = (agg && agg[month]) || { products: {}, flavors: {}, standalone: {} };
+  var aData = Object.keys(p.products || {}).map(function (k) { return { label: k, value: p.products[k] }; })
+    .sort(function (x, y) { return y.value - x.value; })
+    .map(function (d, i) { return { label: d.label, value: d.value, color: PRODUCT_COLORS[i % PRODUCT_COLORS.length] }; });
+  var bData = [];
+  Object.keys(p.flavors || {}).forEach(function (k, i) { bData.push({ label: k, unit: "d\xE1vek", value: p.flavors[k], color: PRODUCT_COLORS[i % PRODUCT_COLORS.length] }); });
+  Object.keys(p.standalone || {}).forEach(function (k) { bData.push({ label: k, unit: "ks", value: p.standalone[k], color: STANDALONE_COLORS[k] || "#6b7280" }); });
+  bData.sort(function (x, y) { return y.value - x.value; });
+  return /*#__PURE__*/React.createElement("div", { style: box },
+    /*#__PURE__*/React.createElement("h3", { style: { fontSize: 14, fontWeight: 700, color: "#374151", margin: "0 0 12px" } }, "Prodeje produktů — ", monthLabel),
+    agg === null
+      ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af", padding: "16px 0" } }, "Nač\xEDt\xE1m prodeje…")
+      : /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 24, flexWrap: "wrap" } },
+          pieBlock("Produkty (ks)", "Kolik kusů každ\xE9ho produktu se prodalo", aData),
+          pieBlock("D\xE1vky po př\xEDchut\xEDch + samostatn\xE9", "D\xE1vky (doplněk) a ks u Kostky/Gel/Olej", bData)));
+}
 function App() {
   var _useState = useState(false),
     _useState2 = _slicedToArray(_useState, 2),
@@ -2489,7 +2561,11 @@ function App() {
         label: "Kč/h"
       }]
     }))));
-  }(), /*#__PURE__*/React.createElement("div", { style: { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 } },
+  }(), /*#__PURE__*/React.createElement(ProductSales, {
+    storeUrl: SHARED_STORE_URL,
+    month: selectedMonthStr,
+    monthLabel: selectedMonthLabel
+  }), /*#__PURE__*/React.createElement("div", { style: { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 } },
     /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 4 } }, "Ruční úprava obratů — ", sel.label || selectedMonthLabel),
     /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Přepíše živá data ze Shoptetu pro vybraný měsíc (uloží se sdíleně)."),
     /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" } }, [{ f: "rev_new", l: "Obrat NEW" }, { f: "rev_mo", l: "Obrat MO" }, { f: "rev_vo", l: "Obrat VO" }, { f: "cnt_new", l: "Počet NEW" }, { f: "cnt_mo", l: "Počet MO" }, { f: "cnt_vo", l: "Počet VO" }].map(function (fld) {
