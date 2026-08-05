@@ -79,10 +79,16 @@ function classifyProductGroup(n) {
   if (/skladn|[čc]lenstv|member|p[řr]edplatn/i.test(n)) return null;
   return "Ostatní";
 }
-// Počet dávek na kus (z názvu, např. "6 dávek"). Když chybí, 1.
+// Počet dávek na kus (z názvu, např. "6 dávek"). Když text "N dávek" chybí,
+// odvodí se z typu balení (staré varianty mají v názvu jen kód).
 function doseCount(n) {
   var m = String(n).match(/(\d+)\s*d[áa]v/i);
-  return m ? parseInt(m[1], 10) : 1;
+  if (m) return parseInt(m[1], 10);
+  if (/XXL/i.test(n)) return 20;      // Balení XXL = 20 dávek
+  if (/5\s*\+\s*1/.test(n)) return 6; // 5+1 ZDARMA = 6 dávek
+  if (/3\s*x/i.test(n)) return 3;     // 3x VÁŠEŇ = 3 dávky
+  if (/single|pyl[tť]/i.test(n)) return 1;
+  return 1;
 }
 // Příchuť z názvu (zatím Citrónová vs základní "12 bylin v medu").
 function productFlavor(n) {
