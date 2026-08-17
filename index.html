@@ -964,6 +964,7 @@ function BarSegment(_ref3) {
     color = _ref3.color,
     label = _ref3.label,
     stripe = _ref3.stripe;
+  var _tip = React.useState(null), tip = _tip[0], setTip = _tip[1];
   if (value <= 0) return null;
   var pct = max > 0 ? value / max * 100 : 0;
   if (stripe) { if (pct < 1.4) pct = 1.4; } // drobný Repetiv ať je vždy vidět
@@ -972,6 +973,7 @@ function BarSegment(_ref3) {
   var bg = stripe
     ? "repeating-linear-gradient(45deg, #93c5fd, #93c5fd 4px, #1e3a8a 4px, #1e3a8a 7px)"
     : color;
+  var tipText = label + ": " + fmt(value) + " Kč";
   return /*#__PURE__*/React.createElement("div", {
     style: {
       width: pct + "%",
@@ -986,10 +988,29 @@ function BarSegment(_ref3) {
       color: "#fff",
       fontWeight: 600,
       overflow: "hidden",
-      whiteSpace: "nowrap"
+      whiteSpace: "nowrap",
+      cursor: "default"
     },
-    title: label + ": " + fmt(value) + " Kč"
-  }, (!stripe && pct > 12) ? fmt(value) : "");
+    title: tipText,
+    onMouseMove: function (e) { setTip({ x: e.clientX, y: e.clientY }); },
+    onMouseLeave: function () { setTip(null); }
+  }, (!stripe && pct > 12) ? fmt(value) : "", tip ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      left: tip.x + 12,
+      top: tip.y - 30,
+      background: "#111827",
+      color: "#fff",
+      padding: "4px 8px",
+      borderRadius: 4,
+      fontSize: 11,
+      fontWeight: 600,
+      whiteSpace: "nowrap",
+      pointerEvents: "none",
+      zIndex: 9999,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.25)"
+    }
+  }, tipText) : null);
 }
 function FixedCostEditor(_ref4) {
   var costs = _ref4.costs,
