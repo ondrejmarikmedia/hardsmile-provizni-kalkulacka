@@ -228,7 +228,7 @@ function fetchOrders() {
   header.forEach(function (h, i) { col[h] = i; });
   // Sloupec s poznámkou (zdroj Repetiv se propisuje do poznámky e-shopu, např. "shopRemark").
   var noteCol = -1;
-  Object.keys(col).forEach(function (h) { if (/pozn|note|remark/i.test(h)) noteCol = col[h]; });
+  Object.keys(col).forEach(function (h) { if (/pozn|note|remark/i.test(h) && !/item|polo/i.test(h)) noteCol = col[h]; });
   var seenId = {}, orders = [];
   for (var i = 1; i < rows.length; i++) {
     var f = rows[i];
@@ -273,10 +273,12 @@ function isVoGroup(g) {
   return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g);
 }
 
-// Zařadí objednávku/zákazníka do NEW/MO/VO. Priorita: ruční třída → skupina VO(vč. VIP) → seznam(MO) → NEW.
-function classify(email, grpType, grpName, ctx) {
+// Zařadí objednávku/zákazníka do NEW/MO/VO. Priorita: ruční třída → stav VIP → skupina VO(vč. VIP) → seznam(MO) → NEW.
+function classify(email, grpType, grpName, ctx, status) {
   var ov = ctx.classOverride[email];
   if (ov === "NEW" || ov === "MO" || ov === "VO") return ov;
+  // Stav objednávky "VIP-Datbáze" (velkoobchodní/databázová objednávka) = VO.
+  if (status && /VIP/i.test(status)) return "VO";
   var hasGroupOv = ctx.groupOverride[email] != null;
   var g = effectiveGroup(email, grpName, ctx);
   // grpType ze Shoptetu bereme jen když skupina není ručně přepsaná
@@ -297,11 +299,14 @@ function computeOrdersAgg() {
   orders.forEach(function (o) {
     if (o.date.length < 7) return;
     var ym = o.date.substring(0, 7);
-    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, rev_rep: 0, cnt_rep: 0 };
-    var cls = classify(o.email, o.grpType, o.grpName, ctx);
+    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, rev_vip: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, cnt_vip: 0, rev_rep: 0, cnt_rep: 0 };
+    var cls = classify(o.email, o.grpType, o.grpName, ctx, o.status);
     if (cls === "VO") { agg[ym].rev_vo += o.price; agg[ym].cnt_vo++; }
     else if (cls === "MO") { agg[ym].rev_mo += o.price; agg[ym].cnt_mo++; }
     else { agg[ym].rev_new += o.price; agg[ym].cnt_new++; }
+    // VIP = podmnožina VO: stav objednávky "VIP-Datbáze" NEBO zákaznická skupina VIP (vč. ručního přepisu).
+    var gEff = effectiveGroup(o.email, o.grpName, ctx);
+    if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff)) { agg[ym].rev_vip += o.price; agg[ym].cnt_vip++; }
     // Repetiv (podle poznámky) – jen informativní rozpad, objednávky zůstávají ve své třídě (typicky NEW).
     if (/repetiv/i.test(o.note)) { agg[ym].rev_rep += o.price; agg[ym].cnt_rep++; }
   });
@@ -315,10 +320,11 @@ function computeCustomers() {
   var byEmail = {};
   orders.forEach(function (o) {
     if (!o.email) return;
-    if (!byEmail[o.email]) byEmail[o.email] = { email: o.email, orders: 0, revenue: 0, lastDate: "", grpName: o.grpName, grpType: o.grpType };
+    if (!byEmail[o.email]) byEmail[o.email] = { email: o.email, orders: 0, revenue: 0, lastDate: "", grpName: o.grpName, grpType: o.grpType, vip: false };
     var c = byEmail[o.email];
     c.orders++;
     c.revenue += o.price;
+    if (/VIP/i.test(o.status || "")) c.vip = true;
     if (o.date > c.lastDate) { c.lastDate = o.date; c.grpName = o.grpName; c.grpType = o.grpType; }
   });
   return Object.keys(byEmail).map(function (e) {
@@ -330,7 +336,7 @@ function computeCustomers() {
       lastDate: c.lastDate.substring(0, 10),
       grpName: effectiveGroup(c.email, c.grpName, ctx),
       shoptetGroup: c.grpName,
-      cls: classify(c.email, c.grpType, c.grpName, ctx)
+      cls: classify(c.email, c.grpType, c.grpName, ctx, c.vip ? "VIP-Datbáze" : "")
     };
   });
 }

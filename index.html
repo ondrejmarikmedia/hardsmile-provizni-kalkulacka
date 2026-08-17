@@ -1326,6 +1326,7 @@ function freezeSettledMonths() {
       if (!hasData) return;                         // prázdný měsíc nezmrazuj
       frozen[m] = {
         rev_new: o.rev_new || 0, rev_mo: o.rev_mo || 0, rev_vo: o.rev_vo || 0,
+        rev_vip: o.rev_vip || 0, cnt_vip: o.cnt_vip || 0,
         cnt_new: o.cnt_new || 0, cnt_mo: o.cnt_mo || 0, cnt_vo: o.cnt_vo || 0,
         rev_rep: o.rev_rep || 0, cnt_rep: o.cnt_rep || 0,
         ad: AD_BY_MONTH[m] || null,
@@ -1362,6 +1363,7 @@ function rebuildMonths() {
     return {
       month: m, label: b.label || labelFor(m),
       rev_new: r.rev_new || 0, rev_mo: r.rev_mo || 0, rev_vo: r.rev_vo || 0,
+      rev_vip: r.rev_vip || 0, cnt_vip: r.cnt_vip || 0,
       cnt_new: r.cnt_new || 0, cnt_mo: r.cnt_mo || 0, cnt_vo: r.cnt_vo || 0,
       rev_rep: r.rev_rep || 0, cnt_rep: r.cnt_rep || 0,
       ad_cost: ad_cost, frozen: !!fz
@@ -1553,6 +1555,7 @@ function App() {
     d = d || {};
     return {
       rev_new: d.rev_new || 0, rev_mo: d.rev_mo || 0, rev_vo: d.rev_vo || 0,
+      rev_vip: d.rev_vip || 0, cnt_vip: d.cnt_vip || 0,
       cnt_new: d.cnt_new || 0, cnt_mo: d.cnt_mo || 0, cnt_vo: d.cnt_vo || 0,
       rev_rep: d.rev_rep || 0, cnt_rep: d.cnt_rep || 0,
       ad: AD_BY_MONTH[m] || (FROZEN[m] && FROZEN[m].ad) || null, _at: "manual"
@@ -1574,6 +1577,7 @@ function App() {
         if (o) {
           FROZEN[m] = {
             rev_new: o.rev_new || 0, rev_mo: o.rev_mo || 0, rev_vo: o.rev_vo || 0,
+            rev_vip: o.rev_vip || 0, cnt_vip: o.cnt_vip || 0,
             cnt_new: o.cnt_new || 0, cnt_mo: o.cnt_mo || 0, cnt_vo: o.cnt_vo || 0,
             rev_rep: o.rev_rep || 0, cnt_rep: o.cnt_rep || 0,
             ad: AD_BY_MONTH[m] || null, _at: "recalc"
@@ -1607,6 +1611,7 @@ function App() {
       rev_new: 0,
       rev_mo: 0,
       rev_vo: 0,
+      rev_vip: 0,
       cnt_new: 0,
       cnt_mo: 0,
       cnt_vo: 0,
@@ -1622,6 +1627,7 @@ function App() {
       t.rev_new += r.rev_new;
       t.rev_mo += r.rev_mo;
       t.rev_vo += r.rev_vo;
+      t.rev_vip += r.rev_vip || 0;
       t.cnt_new += r.cnt_new;
       t.cnt_mo += r.cnt_mo;
       t.cnt_vo += r.cnt_vo;
@@ -1909,10 +1915,15 @@ function App() {
       color: "#f59e0b",
       label: "MO"
     }), /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_vo,
+      value: r.rev_vo - (r.rev_vip || 0),
       max: maxRev,
       color: "#8b5cf6",
-      label: "VO"
+      label: "VO (klasick\xE9)"
+    }), /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_vip || 0,
+      max: maxRev,
+      color: "#c4b5fd",
+      label: "VIP (stav+skupina)"
     })), [].map(function (vr, vi) {
       var isAct = vr.vo === includeVoCredits && vr.fix === (includeFixed ? totalFixed : 0);
       return /*#__PURE__*/React.createElement("div", {
@@ -1971,7 +1982,16 @@ function App() {
       borderRadius: 2,
       marginRight: 4
     }
-  }), "VO"), /*#__PURE__*/React.createElement("span", {
+  }), "VO (klasick\xE9)"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      backgroundColor: "#c4b5fd",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "VIP (stav+skupina, v\xA0VO)"), /*#__PURE__*/React.createElement("span", {
     style: {
       marginLeft: 8,
       color: "#9ca3af"
