@@ -963,11 +963,13 @@ function BarSegment(_ref3) {
     max = _ref3.max,
     color = _ref3.color,
     label = _ref3.label,
-    stripe = _ref3.stripe;
+    stripe = _ref3.stripe,
+    minShow = _ref3.minShow;
   var _tip = React.useState(null), tip = _tip[0], setTip = _tip[1];
   if (value <= 0) return null;
   var pct = max > 0 ? value / max * 100 : 0;
   if (stripe) { if (pct < 1.4) pct = 1.4; } // drobný Repetiv ať je vždy vidět
+  else if (minShow) { if (pct < 1.2) pct = 1.2; } // malé nenulové VIP ať je vždy vidět
   else if (pct < 1) return null;
   // Repetiv = součást NEW → světle modrá se šrafováním tmavě modrou
   var bg = stripe
@@ -1944,7 +1946,8 @@ function App() {
       value: r.rev_vip || 0,
       max: maxRev,
       color: "#c4b5fd",
-      label: "VIP (stav+skupina)"
+      label: "VIP (stav+skupina)",
+      minShow: true
     })), [].map(function (vr, vi) {
       var isAct = vr.vo === includeVoCredits && vr.fix === (includeFixed ? totalFixed : 0);
       return /*#__PURE__*/React.createElement("div", {
