@@ -1476,6 +1476,181 @@ function ProductSales(_refPS) {
           pieBlock("Produkty (ks)", "Kolik kusů každ\xE9ho produktu se prodalo", aData),
           pieBlock("D\xE1vky po př\xEDchut\xEDch + samostatn\xE9", "D\xE1vky (doplněk) a ks u Kostky/Gel/Olej", bData)));
 }
+// ===== Druhý list: Analytika (trendy, waterfall, odhad, simulátor, cíle) =====
+function AnalyticsPage(props) {
+  var h = React.createElement;
+  var rows = props.rows || [];
+  var selIdx = (props.selIdx != null && rows[props.selIdx]) ? props.selIdx : rows.length - 1;
+  var sel = rows[selIdx] || {};
+  var monthFixedFor = props.monthFixedFor || function () { return 0; };
+  var includeVoCredits = props.includeVoCredits;
+  var goals = props.goals || {};
+  var setGoals = props.setGoals || function () {};
+
+  var _sm = useState(MARGIN), simMargin = _sm[0], setSimMargin = _sm[1];
+  var _sc = useState(COMMISSION_RATE), simComm = _sc[0], setSimComm = _sc[1];
+  var _sf = useState(1), simFix = _sf[0], setSimFix = _sf[1];
+
+  var card = function (title, subtitle, body) {
+    return h("div", { style: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", marginBottom: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.04)" } },
+      h("h3", { style: { fontSize: 15, fontWeight: 800, color: "#111827", margin: "0 0 2px" } }, title),
+      subtitle ? h("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, subtitle) : null,
+      body);
+  };
+  var monthPicker = h("select", {
+    value: selIdx,
+    onChange: function (e) { if (props.setSelIdx) props.setSelIdx(parseInt(e.target.value, 10)); },
+    style: { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, fontWeight: 600 }
+  }, rows.map(function (r, i) { return h("option", { key: i, value: i }, r.label); }));
+
+  // 1) Trendové sparkliny
+  var shortLabel = function (l) { return String(l || "").replace(/\s*20\d\d/, ""); };
+  var trendData = rows.map(function (r) { return { label: shortLabel(r.label), provize: r.provize || 0, pno: r.pno || 0, rev_new: r.rev_new || 0 }; });
+  var sparkOne = function (title, color, key, yFmt) {
+    return h("div", { style: { flex: "1 1 300px", minWidth: 280 } },
+      h("div", { style: { fontSize: 12, fontWeight: 700, color: color, marginBottom: 2 } }, title),
+      h(MiniLineChart, { data: trendData, lines: [{ key: key, color: color, label: "" }], width: 360, height: 150, yFormat: yFmt }));
+  };
+  var sparkSection = card("Trendy", "Vývoj klíčových metrik po měsících",
+    h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+      sparkOne("Provize (Kč)", "#7c3aed", "provize"),
+      sparkOne("PNO (%)", "#b45309", "pno", function (v) { return (v * 100).toFixed(0) + " %"; }),
+      sparkOne("Obrat NEW (Kč)", "#2563eb", "rev_new")));
+
+  // 2) Waterfall marže → provize
+  var waterfall = (function () {
+    var marze = sel.marze || 0, kred = sel.kredityPomer || 0, fix = sel.fixedPomer || 0, cisty = sel.cistyObrat || 0, prov = sel.provize || 0;
+    var steps = [
+      { label: "Marže 70 %", top: marze, bot: 0, color: "#10b981", val: marze },
+      { label: "− Kredity", top: marze, bot: marze - kred, color: "#ef4444", val: -kred },
+      { label: "− Fixní", top: marze - kred, bot: cisty, color: "#f59e0b", val: -fix },
+      { label: "= Čistý obrat", top: Math.max(cisty, 0), bot: Math.min(cisty, 0), color: "#2563eb", val: cisty },
+      { label: "Provize 40 %", top: Math.max(prov, 0), bot: 0, color: "#7c3aed", val: prov }
+    ];
+    var maxV = Math.max(marze, cisty, prov, 1) * 1.14;
+    var minV = Math.min(0, cisty);
+    var W = 640, H = 270, padB = 48, padT = 26, padL = 8, padR = 8;
+    var chartH = H - padB - padT, span = maxV - minV || 1;
+    var y = function (v) { return padT + (maxV - v) / span * chartH; };
+    var colW = (W - padL - padR) / steps.length, barW = colW * 0.56;
+    return h("div", { style: { overflowX: "auto" } }, h("svg", { width: W, height: H, style: { display: "block" } },
+      h("line", { x1: padL, x2: W - padR, y1: y(0), y2: y(0), stroke: "#9ca3af", strokeWidth: 1 }),
+      steps.map(function (s, i) {
+        var cx = padL + colW * i + colW / 2, yt = y(s.top), yb = y(s.bot);
+        return h("g", { key: i },
+          h("rect", { x: cx - barW / 2, y: Math.min(yt, yb), width: barW, height: Math.abs(yb - yt) || 1, fill: s.color, rx: 3 }),
+          h("text", { x: cx, y: Math.min(yt, yb) - 6, textAnchor: "middle", fontSize: 11, fontWeight: 700, fill: "#374151" }, (s.val < 0 ? "−" : "") + fmt(Math.abs(s.val))),
+          h("text", { x: cx, y: H - 24, textAnchor: "middle", fontSize: 11, fill: "#6b7280" }, s.label));
+      })));
+  })();
+  var waterfallSection = card("Rozpad marže → provize (" + (sel.label || "") + ")", "Z marže: − kredity − fixní = čistý obrat × 40 % = provize",
+    h("div", null, h("div", { style: { marginBottom: 10 } }, monthPicker), waterfall));
+
+  // 3) Odhad provize do konce měsíce
+  var estSection = (function () {
+    var now = new Date();
+    var pad2 = function (n) { return (n < 10 ? "0" : "") + n; };
+    var ym = now.getFullYear() + "-" + pad2(now.getMonth() + 1);
+    var live = null;
+    for (var i = 0; i < rows.length; i++) { if (rows[i].month === ym) { live = rows[i]; break; } }
+    if (!live) live = rows[rows.length - 1];
+    if (!live) return null;
+    var isCurrent = live.month === ym;
+    var dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    var day = now.getDate();
+    var frac = isCurrent ? day / dim : 1;
+    var proj = function (v) { return frac > 0 ? v / frac : v; };
+    var big = function (label, val, color) {
+      return h("div", { style: { flex: "1 1 160px", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } },
+        h("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" } }, label),
+        h("div", { style: { fontSize: 20, fontWeight: 800, color: color } }, val));
+    };
+    var note = isCurrent
+      ? h("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Živý měsíc " + live.label + " — uplynulo " + day + "/" + dim + " dní (" + (frac * 100).toFixed(0) + " %). Lineární extrapolace na konec měsíce.")
+      : h("p", { style: { fontSize: 12, color: "#9ca3af", margin: "0 0 12px" } }, "Aktuální kalendářní měsíc nemá data — poslední měsíc " + live.label + " je uzavřený (odhad = skutečnost).");
+    return card("Odhad provize do konce měsíce", null,
+      h("div", null, note, h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+        big("Provize zatím", fmt(live.provize || 0) + " Kč", "#7c3aed"),
+        big("Odhad na konec", fmt(proj(live.provize || 0)) + " Kč", "#059669"),
+        big("Obrat NEW zatím", fmt(live.rev_new || 0) + " Kč", "#2563eb"),
+        big("Odhad obratu NEW", fmt(proj(live.rev_new || 0)) + " Kč", "#059669"))));
+  })();
+
+  // 4) Simulátor co-kdyby
+  var simSection = (function () {
+    var rn = sel.rev_new || 0, rm = sel.rev_mo || 0, rv = sel.rev_vo || 0, ad = sel.ad_cost || 0;
+    var baseFixed = monthFixedFor(sel.month);
+    var run = function (margin, comm, fixMult) {
+      var marze = rn * margin;
+      var cd = rn + rm + (includeVoCredits ? rv : 0), cs = cd > 0 ? rn / cd : 1, kred = cs * ad;
+      var fd = rn + rm + rv, fs = fd > 0 ? rn / fd : 1, fixni = fs * baseFixed * fixMult;
+      var cisty = marze - kred - fixni, prov = Math.max(0, cisty * comm);
+      var pno = rn > 0 ? (kred + fixni) / rn : 0;
+      return { marze: marze, kred: kred, fixni: fixni, cisty: cisty, prov: prov, pno: pno };
+    };
+    var base = run(MARGIN, COMMISSION_RATE, 1), cur = run(simMargin, simComm, simFix);
+    var slider = function (label, val, min, max, step, setter, disp) {
+      return h("div", { style: { marginBottom: 12 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 } }, h("span", null, label), h("span", { style: { color: "#111827" } }, disp)),
+        h("input", { type: "range", min: min, max: max, step: step, value: val, onChange: function (e) { setter(parseFloat(e.target.value)); }, style: { width: "100%" } }));
+    };
+    var resCell = function (label, val, delta, color, isPct, goodWhenUp) {
+      var good = goodWhenUp === false ? delta < 0 : delta > 0;
+      var dtxt = Math.abs(delta) < 1e-9 ? "" : (delta > 0 ? "▲ " : "▼ ") + (isPct ? (Math.abs(delta) * 100).toFixed(1) + " pb" : fmt(Math.abs(delta)) + " Kč");
+      return h("div", { style: { flex: "1 1 130px", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10, padding: "10px 12px" } },
+        h("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 600 } }, label),
+        h("div", { style: { fontSize: 18, fontWeight: 800, color: color } }, isPct ? (val * 100).toFixed(1) + " %" : fmt(val) + " Kč"),
+        dtxt ? h("div", { style: { fontSize: 11, color: good ? "#059669" : "#dc2626", fontWeight: 600 } }, dtxt) : null);
+    };
+    return card("Simulátor co-kdyby (" + (sel.label || "") + ")", "Výchozí: marže 70 %, provize 40 %. Změny se hned promítnou — neukládají se do dat.",
+      h("div", null, h("div", { style: { marginBottom: 12 } }, monthPicker),
+        h("div", { style: { display: "flex", gap: 20, flexWrap: "wrap" } },
+          h("div", { style: { flex: "1 1 260px" } },
+            slider("Marže", simMargin, 0.4, 0.9, 0.01, setSimMargin, (simMargin * 100).toFixed(0) + " %"),
+            slider("Provize", simComm, 0.1, 0.6, 0.01, setSimComm, (simComm * 100).toFixed(0) + " %"),
+            slider("Fixní náklady", simFix, 0, 2, 0.05, setSimFix, (simFix * 100).toFixed(0) + " % (" + fmt(baseFixed * simFix) + " Kč)"),
+            h("button", { onClick: function () { setSimMargin(MARGIN); setSimComm(COMMISSION_RATE); setSimFix(1); }, style: { marginTop: 4, padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "↺ Reset na výchozí")),
+          h("div", { style: { flex: "2 1 320px", display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" } },
+            resCell("Provize", cur.prov, cur.prov - base.prov, "#7c3aed", false, true),
+            resCell("Čistý obrat", cur.cisty, cur.cisty - base.cisty, "#2563eb", false, true),
+            resCell("PNO", cur.pno, cur.pno - base.pno, "#b45309", true, false)))));
+  })();
+
+  // 5) Cíle a plnění
+  var goalsSection = (function () {
+    var gRev = goals.revNew || 0, gPno = goals.pno || 0;
+    var setG = function (patch) { setGoals(Object.assign({}, goals, patch)); };
+    var inputRow = h("div", { style: { display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 14 } },
+      h("label", { style: { fontSize: 12, fontWeight: 600, color: "#374151" } }, "Cíl obrat NEW (Kč/měs)", h("br"),
+        h("input", { type: "number", value: gRev || "", onChange: function (e) { setG({ revNew: parseFloat(e.target.value) || 0 }); }, style: { marginTop: 4, padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, width: 160 } })),
+      h("label", { style: { fontSize: 12, fontWeight: 600, color: "#374151" } }, "Cíl PNO (%)", h("br"),
+        h("input", { type: "number", step: "0.1", value: gPno ? (gPno * 100) : "", onChange: function (e) { setG({ pno: (parseFloat(e.target.value) || 0) / 100 }); }, style: { marginTop: 4, padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, width: 120 } })));
+    var bar = function (pct, color) {
+      var p = Math.max(0, Math.min(100, pct));
+      return h("div", { style: { background: "#e5e7eb", borderRadius: 6, height: 8, overflow: "hidden", flex: 1 } }, h("div", { style: { width: p + "%", background: color, height: "100%" } }));
+    };
+    var trows = rows.map(function (r, i) {
+      var revPct = gRev > 0 ? (r.rev_new / gRev * 100) : 0;
+      var pnoOk = gPno > 0 ? (r.pno <= gPno) : null;
+      return h("tr", { key: i, style: { borderBottom: "1px solid #f1f5f9" } },
+        h("td", { style: { padding: "6px 8px", fontSize: 12, fontWeight: 600 } }, r.label),
+        h("td", { style: { padding: "6px 8px", fontSize: 12, textAlign: "right" } }, fmt(r.rev_new || 0)),
+        h("td", { style: { padding: "6px 8px" } }, h("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, bar(revPct, revPct >= 100 ? "#059669" : "#2563eb"), h("span", { style: { fontSize: 11, color: "#6b7280", minWidth: 36, textAlign: "right" } }, gRev > 0 ? revPct.toFixed(0) + " %" : "—"))),
+        h("td", { style: { padding: "6px 8px", fontSize: 12, textAlign: "right" } }, fmtPct(r.pno || 0)),
+        h("td", { style: { padding: "6px 8px", fontSize: 13, textAlign: "center" } }, pnoOk === null ? "—" : (pnoOk ? "✅" : "❌")));
+    });
+    var table = h("table", { style: { width: "100%", borderCollapse: "collapse" } },
+      h("thead", null, h("tr", { style: { borderBottom: "2px solid #e5e7eb" } },
+        ["Měsíc", "Obrat NEW", "Plnění cíle", "PNO", "Cíl PNO"].map(function (t, i) {
+          return h("th", { key: i, style: { padding: "6px 8px", fontSize: 11, color: "#6b7280", textTransform: "uppercase", textAlign: (i === 0 || i === 2) ? "left" : "right" } }, t);
+        }))),
+      h("tbody", null, trows));
+    return card("Cíle a plnění", "Nastav měsíční cíl obratu NEW a PNO; tabulka ukáže plnění po měsících.",
+      h("div", null, inputRow, h("div", { style: { overflowX: "auto" } }, table)));
+  })();
+
+  return h("div", null, sparkSection, waterfallSection, estSection, simSection, goalsSection);
+}
 function App() {
   var _useState = useState(false),
     _useState2 = _slicedToArray(_useState, 2),
@@ -1485,6 +1660,7 @@ function App() {
     _useState4 = _slicedToArray(_useState3, 2),
     includeFixed = _useState4[0],
     setIncludeFixed = _useState4[1];
+  var _useTab = useState("prehled"), tab = _useTab[0], setTab = _useTab[1];
   var _store0 = loadStore();
   var _useState5 = useState(_store0.fixedByMonth || DEFAULT_FIXED_BY_MONTH),
     _useState6 = _slicedToArray(_useState5, 2),
@@ -1539,6 +1715,7 @@ function App() {
       return next;
     });
   };
+  var _useGoals = useState(_store0.goals || {}), goals = _useGoals[0], setGoals = _useGoals[1];
   // Automatické ukládání jen při skutečné úpravě (ne při prvním načtení),
   // aby se sdílená data nepřepsala výchozími, když se načtení nezdaří.
   var _didMount = useRef(false);
@@ -1552,6 +1729,7 @@ function App() {
   useEffect(function () { if (!_didMount.current) return; saveStore({ voEmails: voEmails }); }, [voEmails]);
   useEffect(function () { if (!_didMount.current) return; saveStore({ classOverride: classOverride }); }, [classOverride]);
   useEffect(function () { if (!_didMount.current) return; saveStore({ groupOverride: groupOverride }); }, [groupOverride]);
+  useEffect(function () { if (!_didMount.current) return; saveStore({ goals: goals }); }, [goals]);
   useEffect(function () { _didMount.current = true; }, []);
   var updateRevField = function updateRevField(idx, field, val) {
     setDataRows(function (prev) {
@@ -1768,6 +1946,23 @@ function App() {
         /*#__PURE__*/React.createElement("input", { type: "password", autoFocus: true, value: pwVal, placeholder: "Heslo", onChange: function (e) { setPwVal(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter") tryAuth(); }, style: { padding: "10px 14px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 } }),
         /*#__PURE__*/React.createElement("button", { onClick: tryAuth, style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: "#059669", color: "#fff", fontWeight: 700, cursor: "pointer" } }, "Odemknout"))));
   }
+  var _tabBtn = function (id, label) {
+    var active = tab === id;
+    return /*#__PURE__*/React.createElement("button", {
+      onClick: function () { setTab(id); },
+      style: { padding: "9px 18px", border: "none", borderBottom: "3px solid " + (active ? "#059669" : "transparent"), background: "transparent", color: active ? "#059669" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer" }
+    }, label);
+  };
+  var tabBar = /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", margin: "0 0 20px" } },
+    _tabBtn("prehled", "📊 Přehled"), _tabBtn("analytika", "📈 Analytika"));
+  if (tab === "analytika") {
+    return /*#__PURE__*/React.createElement("div", { style: { fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", maxWidth: 1200, margin: "0 auto", padding: "24px 16px", color: "#111827" } },
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 } },
+        /*#__PURE__*/React.createElement("h1", { style: { fontSize: 22, fontWeight: 700 } }, "Hardsmile — Analýza"),
+        /*#__PURE__*/React.createElement("button", { onClick: doSave, style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, savedState ? "Uloženo ✓" : "💾 Uložit změny")),
+      tabBar,
+      /*#__PURE__*/React.createElement(AnalyticsPage, { rows: rows, selIdx: selectedMonth, setSelIdx: setSelectedMonth, monthFixedFor: fixedTotalFor, includeVoCredits: includeVoCredits, goals: goals, setGoals: setGoals }));
+  }
   return /*#__PURE__*/React.createElement("div", {
     style: {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -1792,7 +1987,7 @@ function App() {
   }, "\ud83d\udd04 Na\u010d\u00edst"), /*#__PURE__*/React.createElement("button", {
     onClick: doSave,
     style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
-  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny"))), /*#__PURE__*/React.createElement("p", {
+  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny"))), tabBar, /*#__PURE__*/React.createElement("p", {
     style: {
       color: "#6b7280",
       fontSize: 14,
