@@ -35,8 +35,15 @@ function doGet(e) {
 function doPost(e) {
   try {
     var body = (e && e.postData && e.postData.contents) || "{}";
-    JSON.parse(body);
-    PropertiesService.getScriptProperties().setProperty("STATE", body);
+    var incoming = JSON.parse(body);
+    // MERGE (ne přepis) + prázdný/nevalidní POST STATE NEmaže → ochrana proti vymazání sdíleného stavu.
+    if (incoming && typeof incoming === "object" && !(incoming instanceof Array) && Object.keys(incoming).length) {
+      var props = PropertiesService.getScriptProperties();
+      var cur = {};
+      try { cur = JSON.parse(props.getProperty("STATE") || "{}"); } catch (pe) { cur = {}; }
+      Object.keys(incoming).forEach(function (k) { cur[k] = incoming[k]; });
+      props.setProperty("STATE", JSON.stringify(cur));
+    }
     // Ruční VO seznam se mohl změnit → zneplatni cache agregace, ať se hned projeví.
     try { CacheService.getScriptCache().remove("ORDERS_AGG"); } catch (ce) {}
     try { CacheService.getScriptCache().remove("PRODUCTS_AGG"); } catch (ce2) {}

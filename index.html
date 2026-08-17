@@ -351,14 +351,17 @@ var _pushTimer = null;
 // CORS preflightu; odpověď je nečitelná (opaque), ale zápis na serveru proběhne.
 function pushShared() {
   if (!SHARED_STORE_URL) return;
+  if (!SHARED_LOADED) return;                 // dokud se NEPRÁZDNÝ sdílený stav nenačetl, nezapisuj (ochrana proti přepisu)
   if (_pushTimer) clearTimeout(_pushTimer);
   _pushTimer = setTimeout(function () {
     try {
+      var payload = JSON.stringify(loadStore());
+      if (payload === "{}") return;           // prázdný stav nikdy neodesílat
       fetch(SHARED_STORE_URL, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(loadStore())
+        body: payload
       });
     } catch (e) {}
   }, 800);
@@ -374,12 +377,15 @@ function saveStore(patch) {
 function flushShared() {
   if (_pushTimer) { clearTimeout(_pushTimer); _pushTimer = null; }
   if (!SHARED_STORE_URL) return Promise.resolve();
+  if (!SHARED_LOADED) return Promise.resolve();   // ochrana proti přepisu, když se sdílený stav nenačetl
   try {
+    var payload = JSON.stringify(loadStore());
+    if (payload === "{}") return Promise.resolve();
     return fetch(SHARED_STORE_URL, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(loadStore())
+      body: payload
     });
   } catch (e) { return Promise.resolve(); }
 }
@@ -397,9 +403,9 @@ async function loadSharedIntoCache() {
   if (!SHARED_STORE_URL) return;
   try {
     var shared = await fetchWithTimeout(SHARED_STORE_URL, 12000).then(function (r) { return r.json(); });
-    if (shared && typeof shared === "object") {
-      SHARED_LOADED = true;
-      if (Object.keys(shared).length) localStorage.setItem(LS_KEY, JSON.stringify(shared));
+    if (shared && typeof shared === "object" && Object.keys(shared).length) {
+      SHARED_LOADED = true;   // jen při NEPRÁZDNÉM načtení – jinak nezapisovat, ať se dobrý stav nepřepíše
+      localStorage.setItem(LS_KEY, JSON.stringify(shared));
     }
   } catch (e) { console.warn("Nelze načíst sdílená data:", e); }
 }
