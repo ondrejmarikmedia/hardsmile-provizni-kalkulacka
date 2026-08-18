@@ -1408,46 +1408,75 @@ function rebuildMonths() {
 var PRODUCT_COLORS = ["#2563eb", "#f59e0b", "#8b5cf6", "#10b981", "#0ea5e9", "#eab308", "#ec4899", "#14b8a6", "#a855f7", "#f97316"];
 var STANDALONE_COLORS = { "Kostky": "#ef4444", "Gel": "#0ea5e9", "Olej": "#eab308" };
 function PieChart(_refP) {
-  var data = _refP.data, size = _refP.size || 150;
+  var h = React.createElement;
+  var data = (_refP.data || []).filter(function (d) { return (d.value || 0) > 0; });
+  var size = _refP.size || 170;
   var total = data.reduce(function (s, d) { return s + (d.value || 0); }, 0);
-  var r = size / 2 - 1, cx = size / 2, cy = size / 2;
+  var cx = size / 2, cy = size / 2, r = size / 2 - 2, ri = r * 0.58;
+  var centerTop = _refP.centerLabel != null ? _refP.centerLabel : fmt(total);
+  var centerSub = _refP.centerSub || "";
   if (total <= 0) {
-    return /*#__PURE__*/React.createElement("svg", { width: size, height: size },
-      /*#__PURE__*/React.createElement("circle", { cx: cx, cy: cy, r: r, fill: "#f1f5f9" }),
-      /*#__PURE__*/React.createElement("text", { x: cx, y: cy, textAnchor: "middle", dominantBaseline: "central", fontSize: 11, fill: "#9ca3af" }, "—"));
+    return h("svg", { width: size, height: size },
+      h("circle", { cx: cx, cy: cy, r: r, fill: "none", stroke: "#e5e7eb", strokeWidth: 2 }),
+      h("text", { x: cx, y: cy, textAnchor: "middle", dominantBaseline: "central", fontSize: 12, fill: "#9ca3af" }, "—"));
   }
-  var ang = -Math.PI / 2;
-  var slices = data.filter(function (d) { return d.value > 0; }).map(function (d, i) {
-    var frac = d.value / total;
-    if (frac >= 0.999) { return /*#__PURE__*/React.createElement("circle", { key: i, cx: cx, cy: cy, r: r, fill: d.color }); }
-    var a2 = ang + frac * 2 * Math.PI;
-    var large = frac > 0.5 ? 1 : 0;
-    var x1 = cx + r * Math.cos(ang), y1 = cy + r * Math.sin(ang);
-    var x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
-    var dstr = "M " + cx + " " + cy + " L " + x1.toFixed(2) + " " + y1.toFixed(2) + " A " + r + " " + r + " 0 " + large + " 1 " + x2.toFixed(2) + " " + y2.toFixed(2) + " Z";
+  var ang = -Math.PI / 2, arcs = [];
+  data.forEach(function (d, i) {
+    var frac = d.value / total, a1 = ang, a2 = ang + frac * 2 * Math.PI;
     ang = a2;
-    return /*#__PURE__*/React.createElement("path", { key: i, d: dstr, fill: d.color, stroke: "#fff", strokeWidth: 1 });
+    var pct = Math.round(frac * 100);
+    var tip = h("title", null, d.label + ": " + fmt(d.value) + (d.unit ? " " + d.unit : "") + " (" + pct + " %)");
+    if (frac >= 0.999) {
+      arcs.push(h("path", { key: i, fillRule: "evenodd", fill: d.color,
+        d: "M " + (cx + r) + " " + cy + " A " + r + " " + r + " 0 1 1 " + (cx - r) + " " + cy + " A " + r + " " + r + " 0 1 1 " + (cx + r) + " " + cy + " Z M " + (cx + ri) + " " + cy + " A " + ri + " " + ri + " 0 1 0 " + (cx - ri) + " " + cy + " A " + ri + " " + ri + " 0 1 0 " + (cx + ri) + " " + cy + " Z" }, tip));
+      return;
+    }
+    var large = (a2 - a1) > Math.PI ? 1 : 0;
+    var x1o = cx + r * Math.cos(a1), y1o = cy + r * Math.sin(a1), x2o = cx + r * Math.cos(a2), y2o = cy + r * Math.sin(a2);
+    var x1i = cx + ri * Math.cos(a1), y1i = cy + ri * Math.sin(a1), x2i = cx + ri * Math.cos(a2), y2i = cy + ri * Math.sin(a2);
+    var dstr = "M " + x1o.toFixed(2) + " " + y1o.toFixed(2) + " A " + r + " " + r + " 0 " + large + " 1 " + x2o.toFixed(2) + " " + y2o.toFixed(2) + " L " + x2i.toFixed(2) + " " + y2i.toFixed(2) + " A " + ri + " " + ri + " 0 " + large + " 0 " + x1i.toFixed(2) + " " + y1i.toFixed(2) + " Z";
+    arcs.push(h("path", { key: i, d: dstr, fill: d.color, stroke: "#fff", strokeWidth: 1.5 }, tip));
+    if (frac >= 0.06) {
+      var mid = (a1 + a2) / 2, lr = (r + ri) / 2;
+      arcs.push(h("text", { key: "t" + i, x: cx + lr * Math.cos(mid), y: cy + lr * Math.sin(mid), textAnchor: "middle", dominantBaseline: "central", fontSize: 10, fontWeight: 700, fill: "#fff" }, pct + "%"));
+    }
   });
-  return /*#__PURE__*/React.createElement("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size }, slices);
+  return h("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size }, arcs,
+    h("text", { x: cx, y: cy - 6, textAnchor: "middle", dominantBaseline: "central", fontSize: 16, fontWeight: 800, fill: "#111827" }, centerTop),
+    centerSub ? h("text", { x: cx, y: cy + 12, textAnchor: "middle", dominantBaseline: "central", fontSize: 9, fill: "#9ca3af" }, centerSub) : null);
 }
-function pieBlock(title, note, data) {
-  var total = data.reduce(function (s, d) { return s + (d.value || 0); }, 0);
-  var td = { padding: "4px 8px", fontSize: 12, borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" };
-  return /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 320px", minWidth: 280 } },
-    /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 2 } }, title),
-    note ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginBottom: 8 } }, note) : null,
-    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" } },
-      /*#__PURE__*/React.createElement(PieChart, { data: data, size: 150 }),
-      /*#__PURE__*/React.createElement("table", { style: { borderCollapse: "collapse", flex: 1, minWidth: 150 } },
-        /*#__PURE__*/React.createElement("tbody", null, data.map(function (d, i) {
-          var pct = total > 0 ? Math.round(d.value / total * 100) : 0;
-          return /*#__PURE__*/React.createElement("tr", { key: i },
-            /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { width: 12 }) }, /*#__PURE__*/React.createElement("span", { style: { display: "inline-block", width: 10, height: 10, borderRadius: 2, backgroundColor: d.color } })),
-            /*#__PURE__*/React.createElement("td", { style: td }, d.label),
-            /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", fontWeight: 600 }) }, fmt(d.value), d.unit ? " " + d.unit : ""),
-            /*#__PURE__*/React.createElement("td", { style: _objectSpread(_objectSpread({}, td), {}, { textAlign: "right", color: "#9ca3af" }) }, pct, " %"));
-        }))))
-  );
+function pieBlock(title, note, data, unitLabel) {
+  var h = React.createElement;
+  var clean = (data || []).filter(function (d) { return (d.value || 0) > 0; }).slice().sort(function (a, b) { return b.value - a.value; });
+  var MAXP = 8, pieData = clean;
+  if (clean.length > MAXP) {
+    var head = clean.slice(0, MAXP - 1);
+    var restSum = clean.slice(MAXP - 1).reduce(function (s, d) { return s + d.value; }, 0);
+    pieData = head.concat([{ label: "Ostatní", value: restSum, color: "#cbd5e1", unit: clean[0] && clean[0].unit }]);
+  }
+  var total = clean.reduce(function (s, d) { return s + (d.value || 0); }, 0);
+  var td = { padding: "5px 8px", fontSize: 12, borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" };
+  var tdT = Object.assign({}, td, { borderBottom: "none" });
+  return h("div", { style: { flex: "1 1 340px", minWidth: 300 } },
+    h("div", { style: { fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 2 } }, title),
+    note ? h("div", { style: { fontSize: 11, color: "#9ca3af", marginBottom: 10 } }, note) : null,
+    h("div", { style: { display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" } },
+      h(PieChart, { data: pieData, size: 180, centerLabel: fmt(total), centerSub: unitLabel || "celkem" }),
+      h("table", { style: { borderCollapse: "collapse", flex: 1, minWidth: 200 } },
+        h("tbody", null,
+          pieData.map(function (d, i) {
+            var pct = total > 0 ? Math.round(d.value / total * 100) : 0;
+            return h("tr", { key: i },
+              h("td", { style: Object.assign({}, td, { width: 12 }) }, h("span", { style: { display: "inline-block", width: 10, height: 10, borderRadius: 2, backgroundColor: d.color } })),
+              h("td", { style: td }, d.label),
+              h("td", { style: Object.assign({}, td, { textAlign: "right", fontWeight: 600 }) }, fmt(d.value), d.unit ? " " + d.unit : ""),
+              h("td", { style: Object.assign({}, td, { textAlign: "right", color: "#9ca3af" }) }, pct, " %"));
+          }),
+          h("tr", null,
+            h("td", { style: tdT }),
+            h("td", { style: Object.assign({}, tdT, { fontWeight: 700 }) }, "Celkem"),
+            h("td", { style: Object.assign({}, tdT, { textAlign: "right", fontWeight: 800 }) }, fmt(total)),
+            h("td", { style: tdT }))))));
 }
 function ProductSales(_refPS) {
   var storeUrl = _refPS.storeUrl, month = _refPS.month, monthLabel = _refPS.monthLabel;
@@ -1473,8 +1502,8 @@ function ProductSales(_refPS) {
     agg === null
       ? /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#9ca3af", padding: "16px 0" } }, "Nač\xEDt\xE1m prodeje…")
       : /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 24, flexWrap: "wrap" } },
-          pieBlock("Produkty (ks)", "Kolik kusů každ\xE9ho produktu se prodalo", aData),
-          pieBlock("D\xE1vky po př\xEDchut\xEDch + samostatn\xE9", "D\xE1vky (doplněk) a ks u Kostky/Gel/Olej", bData)));
+          pieBlock("Produkty (ks)", "Kolik kusů každ\xE9ho produktu se prodalo", aData, "ks celkem"),
+          pieBlock("D\xE1vky po př\xEDchut\xEDch + samostatn\xE9", "D\xE1vky (doplněk) a ks u Kostky/Gel/Olej", bData, "položek")));
 }
 // ===== Druhý list: Analytika (trendy, waterfall, odhad, simulátor, cíle) =====
 function AnalyticsPage(props) {
@@ -1615,14 +1644,17 @@ function AnalyticsPage(props) {
     };
     var base = run(sel.rev_new || 0, sel.rev_mo || 0, sel.rev_vo || 0, sel.ad_cost || 0, monthFixedFor(sel.month) || 0, MARGIN, COMMISSION_RATE, !!includeVoCredits);
     var cur = run(simRn, simRm, simRv, simAd, simFixAbs, simMargin, simComm, simVo);
-    var numIn = function (label, val, setter) {
-      return h("label", { style: { display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "#6b7280", fontWeight: 600, flex: "1 1 120px" } }, label,
-        h("input", { type: "number", value: val, onChange: function (e) { setter(parseFloat(e.target.value) || 0); }, style: { padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 } }));
-    };
-    var slider = function (label, val, min, max, step, setter, disp) {
+    var moneyMax = function (b) { return Math.max(Math.ceil((b || 0) * 2 / 1000) * 1000, 50000); };
+    // Kombinovaný ovladač: posuvník + číselný vstup (synchronizované). isPct → hodnota 0–1, zobrazená v %.
+    var ctrl = function (label, val, setter, min, max, step, isPct) {
       return h("div", { style: { marginBottom: 12 } },
-        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 } }, h("span", null, label), h("span", { style: { color: "#111827" } }, disp)),
-        h("input", { type: "range", min: min, max: max, step: step, value: val, onChange: function (e) { setter(parseFloat(e.target.value)); }, style: { width: "100%" } }));
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 4 } },
+          h("span", { style: { fontSize: 12, fontWeight: 600, color: "#374151" } }, label),
+          h("input", { type: "number", value: isPct ? +(val * 100).toFixed(1) : Math.round(val), step: isPct ? 1 : 500,
+            onChange: function (e) { var v = parseFloat(e.target.value); if (isNaN(v)) v = 0; setter(isPct ? v / 100 : v); },
+            style: { width: 96, padding: "4px 6px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13, textAlign: "right", fontWeight: 600 } })),
+        h("input", { type: "range", min: min, max: max, step: step, value: Math.max(min, Math.min(val, max)),
+          onChange: function (e) { setter(parseFloat(e.target.value)); }, style: { width: "100%" } }));
     };
     var resCell = function (label, val, delta, color, isPct, goodWhenUp) {
       var good = goodWhenUp === false ? delta < 0 : delta > 0;
@@ -1636,11 +1668,13 @@ function AnalyticsPage(props) {
       h("div", null, h("div", { style: { marginBottom: 12 } }, monthPicker),
         h("div", { style: { display: "flex", gap: 20, flexWrap: "wrap" } },
           h("div", { style: { flex: "1 1 300px" } },
-            h("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 } },
-              numIn("Obrat NEW", simRn, setSimRn), numIn("Obrat MO", simRm, setSimRm), numIn("Obrat VO", simRv, setSimRv),
-              numIn("Ad costs", simAd, setSimAd), numIn("Fixní náklady", simFixAbs, setSimFixAbs)),
-            slider("Marže", simMargin, 0.3, 1, 0.01, setSimMargin, (simMargin * 100).toFixed(0) + " %"),
-            slider("Provize", simComm, 0.1, 0.8, 0.01, setSimComm, (simComm * 100).toFixed(0) + " %"),
+            ctrl("Obrat NEW (Kč)", simRn, setSimRn, 0, moneyMax(sel.rev_new), 500),
+            ctrl("Obrat MO (Kč)", simRm, setSimRm, 0, moneyMax(sel.rev_mo), 500),
+            ctrl("Obrat VO (Kč)", simRv, setSimRv, 0, moneyMax(sel.rev_vo), 500),
+            ctrl("Ad costs (Kč)", simAd, setSimAd, 0, moneyMax(sel.ad_cost), 500),
+            ctrl("Fixní náklady (Kč)", simFixAbs, setSimFixAbs, 0, moneyMax(monthFixedFor(sel.month)), 100),
+            ctrl("Marže (%)", simMargin, setSimMargin, 0.3, 1, 0.01, true),
+            ctrl("Provize (%)", simComm, setSimComm, 0.1, 0.8, 0.01, true),
             h("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 10px", cursor: "pointer" } },
               h("input", { type: "checkbox", checked: simVo, onChange: function (e) { setSimVo(e.target.checked); } }), "VO v kreditech"),
             h("button", { onClick: _resetSim, style: { padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "↺ Reset na skutečnost")),
