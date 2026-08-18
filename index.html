@@ -1489,7 +1489,18 @@ function AnalyticsPage(props) {
 
   var _sm = useState(MARGIN), simMargin = _sm[0], setSimMargin = _sm[1];
   var _sc = useState(COMMISSION_RATE), simComm = _sc[0], setSimComm = _sc[1];
-  var _sf = useState(1), simFix = _sf[0], setSimFix = _sf[1];
+  var _srn = useState(sel.rev_new || 0), simRn = _srn[0], setSimRn = _srn[1];
+  var _srm = useState(sel.rev_mo || 0), simRm = _srm[0], setSimRm = _srm[1];
+  var _srv = useState(sel.rev_vo || 0), simRv = _srv[0], setSimRv = _srv[1];
+  var _sad = useState(sel.ad_cost || 0), simAd = _sad[0], setSimAd = _sad[1];
+  var _sfx = useState(monthFixedFor(sel.month) || 0), simFixAbs = _sfx[0], setSimFixAbs = _sfx[1];
+  var _svo = useState(!!includeVoCredits), simVo = _svo[0], setSimVo = _svo[1];
+  var _resetSim = function () {
+    setSimMargin(MARGIN); setSimComm(COMMISSION_RATE); setSimVo(!!includeVoCredits);
+    setSimRn(sel.rev_new || 0); setSimRm(sel.rev_mo || 0); setSimRv(sel.rev_vo || 0);
+    setSimAd(sel.ad_cost || 0); setSimFixAbs(monthFixedFor(sel.month) || 0);
+  };
+  useEffect(function () { _resetSim(); }, [selIdx]);
 
   var card = function (title, subtitle, body) {
     return h("div", { style: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", marginBottom: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.04)" } },
@@ -1505,17 +1516,33 @@ function AnalyticsPage(props) {
 
   // 1) Trendové sparkliny
   var shortLabel = function (l) { return String(l || "").replace(/\s*20\d\d/, ""); };
-  var trendData = rows.map(function (r) { return { label: shortLabel(r.label), provize: r.provize || 0, pno: r.pno || 0, rev_new: r.rev_new || 0 }; });
+  var trendData = rows.map(function (r) {
+    return {
+      label: shortLabel(r.label),
+      provize: r.provize || 0, pno: r.pno || 0, rev_new: r.rev_new || 0,
+      rev_all: (r.rev_new || 0) + (r.rev_mo || 0) + (r.rev_vo || 0),
+      marze: r.marze || 0, ad_cost: r.ad_cost || 0,
+      cisty: r.cistyObrat || 0, naklady: (r.kredityPomer || 0) + (r.fixedPomer || 0),
+      cnt: (r.cnt_new || 0) + (r.cnt_mo || 0) + (r.cnt_vo || 0)
+    };
+  });
+  var pctFmt = function (v) { return (v * 100).toFixed(0) + " %"; };
   var sparkOne = function (title, color, key, yFmt) {
-    return h("div", { style: { flex: "1 1 300px", minWidth: 280 } },
+    return h("div", { style: { flex: "1 1 260px", minWidth: 240 } },
       h("div", { style: { fontSize: 12, fontWeight: 700, color: color, marginBottom: 2 } }, title),
-      h(MiniLineChart, { data: trendData, lines: [{ key: key, color: color, label: "" }], width: 360, height: 150, yFormat: yFmt }));
+      h(MiniLineChart, { data: trendData, lines: [{ key: key, color: color, label: "" }], width: 340, height: 140, yFormat: yFmt }));
   };
   var sparkSection = card("Trendy", "Vývoj klíčových metrik po měsících",
     h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
       sparkOne("Provize (Kč)", "#7c3aed", "provize"),
-      sparkOne("PNO (%)", "#b45309", "pno", function (v) { return (v * 100).toFixed(0) + " %"; }),
-      sparkOne("Obrat NEW (Kč)", "#2563eb", "rev_new")));
+      sparkOne("PNO (%)", "#b45309", "pno", pctFmt),
+      sparkOne("Obrat NEW (Kč)", "#2563eb", "rev_new"),
+      sparkOne("Obrat celkem (Kč)", "#0ea5e9", "rev_all"),
+      sparkOne("Marže (Kč)", "#10b981", "marze"),
+      sparkOne("Ad costs (Kč)", "#ef4444", "ad_cost"),
+      sparkOne("Náklady →NEW (Kč)", "#f59e0b", "naklady"),
+      sparkOne("Čistý obrat (Kč)", "#2563eb", "cisty"),
+      sparkOne("Počet objednávek", "#8b5cf6", "cnt")));
 
   // 2) Waterfall marže → provize
   var waterfall = (function () {
@@ -1578,17 +1605,20 @@ function AnalyticsPage(props) {
 
   // 4) Simulátor co-kdyby
   var simSection = (function () {
-    var rn = sel.rev_new || 0, rm = sel.rev_mo || 0, rv = sel.rev_vo || 0, ad = sel.ad_cost || 0;
-    var baseFixed = monthFixedFor(sel.month);
-    var run = function (margin, comm, fixMult) {
+    var run = function (rn, rm, rv, ad, fixAbs, margin, comm, vo) {
       var marze = rn * margin;
-      var cd = rn + rm + (includeVoCredits ? rv : 0), cs = cd > 0 ? rn / cd : 1, kred = cs * ad;
-      var fd = rn + rm + rv, fs = fd > 0 ? rn / fd : 1, fixni = fs * baseFixed * fixMult;
+      var cd = rn + rm + (vo ? rv : 0), cs = cd > 0 ? rn / cd : 1, kred = cs * ad;
+      var fd = rn + rm + rv, fs = fd > 0 ? rn / fd : 1, fixni = fs * fixAbs;
       var cisty = marze - kred - fixni, prov = Math.max(0, cisty * comm);
       var pno = rn > 0 ? (kred + fixni) / rn : 0;
       return { marze: marze, kred: kred, fixni: fixni, cisty: cisty, prov: prov, pno: pno };
     };
-    var base = run(MARGIN, COMMISSION_RATE, 1), cur = run(simMargin, simComm, simFix);
+    var base = run(sel.rev_new || 0, sel.rev_mo || 0, sel.rev_vo || 0, sel.ad_cost || 0, monthFixedFor(sel.month) || 0, MARGIN, COMMISSION_RATE, !!includeVoCredits);
+    var cur = run(simRn, simRm, simRv, simAd, simFixAbs, simMargin, simComm, simVo);
+    var numIn = function (label, val, setter) {
+      return h("label", { style: { display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "#6b7280", fontWeight: 600, flex: "1 1 120px" } }, label,
+        h("input", { type: "number", value: val, onChange: function (e) { setter(parseFloat(e.target.value) || 0); }, style: { padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13 } }));
+    };
     var slider = function (label, val, min, max, step, setter, disp) {
       return h("div", { style: { marginBottom: 12 } },
         h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 } }, h("span", null, label), h("span", { style: { color: "#111827" } }, disp)),
@@ -1602,17 +1632,24 @@ function AnalyticsPage(props) {
         h("div", { style: { fontSize: 18, fontWeight: 800, color: color } }, isPct ? (val * 100).toFixed(1) + " %" : fmt(val) + " Kč"),
         dtxt ? h("div", { style: { fontSize: 11, color: good ? "#059669" : "#dc2626", fontWeight: 600 } }, dtxt) : null);
     };
-    return card("Simulátor co-kdyby (" + (sel.label || "") + ")", "Výchozí: marže 70 %, provize 40 %. Změny se hned promítnou — neukládají se do dat.",
+    return card("Simulátor co-kdyby (" + (sel.label || "") + ")", "Uprav libovolnou proměnnou — vše se hned přepočítá. Neukládá se do dat.",
       h("div", null, h("div", { style: { marginBottom: 12 } }, monthPicker),
         h("div", { style: { display: "flex", gap: 20, flexWrap: "wrap" } },
-          h("div", { style: { flex: "1 1 260px" } },
-            slider("Marže", simMargin, 0.4, 0.9, 0.01, setSimMargin, (simMargin * 100).toFixed(0) + " %"),
-            slider("Provize", simComm, 0.1, 0.6, 0.01, setSimComm, (simComm * 100).toFixed(0) + " %"),
-            slider("Fixní náklady", simFix, 0, 2, 0.05, setSimFix, (simFix * 100).toFixed(0) + " % (" + fmt(baseFixed * simFix) + " Kč)"),
-            h("button", { onClick: function () { setSimMargin(MARGIN); setSimComm(COMMISSION_RATE); setSimFix(1); }, style: { marginTop: 4, padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "↺ Reset na výchozí")),
-          h("div", { style: { flex: "2 1 320px", display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" } },
-            resCell("Provize", cur.prov, cur.prov - base.prov, "#7c3aed", false, true),
+          h("div", { style: { flex: "1 1 300px" } },
+            h("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 } },
+              numIn("Obrat NEW", simRn, setSimRn), numIn("Obrat MO", simRm, setSimRm), numIn("Obrat VO", simRv, setSimRv),
+              numIn("Ad costs", simAd, setSimAd), numIn("Fixní náklady", simFixAbs, setSimFixAbs)),
+            slider("Marže", simMargin, 0.3, 1, 0.01, setSimMargin, (simMargin * 100).toFixed(0) + " %"),
+            slider("Provize", simComm, 0.1, 0.8, 0.01, setSimComm, (simComm * 100).toFixed(0) + " %"),
+            h("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 10px", cursor: "pointer" } },
+              h("input", { type: "checkbox", checked: simVo, onChange: function (e) { setSimVo(e.target.checked); } }), "VO v kreditech"),
+            h("button", { onClick: _resetSim, style: { padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "↺ Reset na skutečnost")),
+          h("div", { style: { flex: "1 1 300px", display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" } },
+            resCell("Marže", cur.marze, cur.marze - base.marze, "#10b981", false, true),
+            resCell("Kredity→N", cur.kred, cur.kred - base.kred, "#ef4444", false, false),
+            resCell("Fixní→N", cur.fixni, cur.fixni - base.fixni, "#f59e0b", false, false),
             resCell("Čistý obrat", cur.cisty, cur.cisty - base.cisty, "#2563eb", false, true),
+            resCell("Provize", cur.prov, cur.prov - base.prov, "#7c3aed", false, true),
             resCell("PNO", cur.pno, cur.pno - base.pno, "#b45309", true, false)))));
   })();
 
@@ -1961,471 +1998,7 @@ function App() {
         /*#__PURE__*/React.createElement("h1", { style: { fontSize: 22, fontWeight: 700 } }, "Hardsmile — Analýza"),
         /*#__PURE__*/React.createElement("button", { onClick: doSave, style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, savedState ? "Uloženo ✓" : "💾 Uložit změny")),
       tabBar,
-      /*#__PURE__*/React.createElement(AnalyticsPage, { rows: rows, selIdx: selectedMonth, setSelIdx: setSelectedMonth, monthFixedFor: fixedTotalFor, includeVoCredits: includeVoCredits, goals: goals, setGoals: setGoals }));
-  }
-  return /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      maxWidth: 1200,
-      margin: "0 auto",
-      padding: "24px 16px",
-      color: "#111827"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }
-  }, /*#__PURE__*/React.createElement("h1", {
-    style: {
-      fontSize: 22,
-      fontWeight: 700,
-      marginBottom: 4
-    }
-  }, "Hardsmile \u2014 Kalkulace proviz\xED"), /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", gap: 8, flexWrap: "wrap" }
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: function () { try { window.location.reload(); } catch (e) {} },
-    style: { padding: "10px 18px", border: "1px solid #059669", borderRadius: 8, backgroundColor: "#fff", color: "#059669", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
-  }, "\ud83d\udd04 Na\u010d\u00edst"), /*#__PURE__*/React.createElement("button", {
-    onClick: doSave,
-    style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
-  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny"))), tabBar, /*#__PURE__*/React.createElement("p", {
-    style: {
-      color: "#6b7280",
-      fontSize: 14,
-      marginBottom: 24
-    }
-  }, (rows[0] ? rows[0].label : "") + " – " + (rows[rows.length - 1] ? rows[rows.length - 1].label : "") + " | Marže 70 % | Provize 40 % z čist\xE9ho obratu"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: "#f0fdf4",
-      border: "1px solid #bbf7d0",
-      borderRadius: 8,
-      padding: "10px 14px",
-      marginBottom: 20,
-      fontSize: 12,
-      color: "#166534",
-      lineHeight: 1.5
-    }
-  }, /*#__PURE__*/React.createElement("strong", null, "Model: VO mimo kredity, fixn\u00ED n\u00E1klady na v\u0161echny zdroje. "), "Velkoobchod (VO) se nepou\u017E\u00EDv\u00E1 pro pon\u00ED\u017Een\u00ED n\u00E1klad\u016F do reklam \u2014 kredity = NEW / (NEW + MO). Fixn\u00ED n\u00E1klady (B2Metrics, Ecomail, Shoptet) se pod\u00EDl\u00ED na v\u0161ech zdroj\u00EDch \u2014 denomin\u00E1tor = NEW + MO + VO."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "none",
-      gap: 12,
-      alignItems: "stretch",
-      marginBottom: 20,
-      flexWrap: "wrap"
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
-      return setIncludeVoCredits(!includeVoCredits);
-    },
-    style: {
-      flex: 1,
-      minWidth: 200,
-      padding: "14px 18px",
-      borderRadius: 10,
-      cursor: "pointer",
-      transition: "all 0.2s",
-      border: "2px solid " + (includeVoCredits ? "#8b5cf6" : "#e5e7eb"),
-      backgroundColor: includeVoCredits ? "#f5f3ff" : "#fff",
-      color: includeVoCredits ? "#7c3aed" : "#6b7280"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontWeight: 700,
-      fontSize: 14,
-      marginBottom: 2
-    }
-  }, includeVoCredits ? "S VO v kreditech" : "Bez VO v kreditech"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12
-    }
-  }, includeVoCredits ? "Kredity = NEW / (NEW + MO + VO)" : "Kredity = NEW / (NEW + MO)")), /*#__PURE__*/React.createElement("button", {
-    onClick: function onClick() {
-      return setIncludeFixed(!includeFixed);
-    },
-    style: {
-      flex: 1,
-      minWidth: 200,
-      padding: "14px 18px",
-      borderRadius: 10,
-      cursor: "pointer",
-      transition: "all 0.2s",
-      border: "2px solid " + (includeFixed ? "#b45309" : "#e5e7eb"),
-      backgroundColor: includeFixed ? "#fffbeb" : "#fff",
-      color: includeFixed ? "#b45309" : "#6b7280"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontWeight: 700,
-      fontSize: 14,
-      marginBottom: 2
-    }
-  }, includeFixed ? "S fixními N" : "Bez fixních N"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 12
-    }
-  }, includeFixed ? fmt(totalFixed) + " Kč/měs v kalkulaci" : "Pouze ad costs (kredity)"))), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap", alignItems: "stretch" } }, /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 170px", backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 6 } }, "Přehled za měsíc"), /*#__PURE__*/React.createElement("select", { value: selectedMonth, onChange: function (e) { setSelectedMonth(parseInt(e.target.value)); }, style: { width: "100%", fontSize: 14, fontWeight: 700, color: "#111827", border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 8px", backgroundColor: "#fff", cursor: "pointer" } }, rows.map(function (r, idx) { return /*#__PURE__*/React.createElement("option", { key: r.month, value: idx }, r.label); }))), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Obrat NEW"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#2563eb" } }, fmt(sel.rev_new || 0)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, (sel.cnt_new || 0) + " obj")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Ad costs"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#ef4444" } }, fmt(sel.ad_cost || 0)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, "reklama")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Fixní náklady"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#b45309" } }, fmt(selFixed)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, "za měsíc")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Provize"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "#111827" } }, fmt(sel.provize || 0), " Kč"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, sel.label || "")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "z toho Repetiv"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#7c3aed" } }, fmt(sel.rev_rep || 0), " Kč"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, (sel.cnt_rep || 0) + " obj — v NEW"))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginBottom: 24
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      alignItems: "baseline",
-      gap: 10,
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("h3", {
-    style: {
-      fontSize: 14,
-      fontWeight: 700,
-      color: "#374151",
-      margin: 0
-    }
-  }, "Struktura obratu po m\u011Bs\xEDc\xEDch"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "none",
-      gap: 8,
-      fontSize: 10,
-      color: "#9ca3af"
-    }
-  }, variantDefs.map(function (vd, vi) {
-    var isAct = vd.vo === includeVoCredits && vd.fix === (includeFixed ? totalFixed : 0);
-    return /*#__PURE__*/React.createElement("span", {
-      key: vi,
-      style: {
-        fontWeight: isAct ? 700 : 400,
-        color: isAct ? "#059669" : "#9ca3af"
-      }
-    }, vd["short"]);
-  }))), rows.map(function (r) {
-    return /*#__PURE__*/React.createElement("div", {
-      key: r.month,
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        marginBottom: 5
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        width: 85,
-        fontSize: 12,
-        fontWeight: 600,
-        color: "#374151",
-        flexShrink: 0
-      }
-    }, r.label.replace("2025", "'25").replace("2026", "'26")), /*#__PURE__*/React.createElement("div", {
-      style: {
-        flex: 1,
-        display: "flex",
-        height: 24,
-        borderRadius: 4,
-        overflow: "hidden",
-        backgroundColor: "#f1f5f9"
-      }
-    }, /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_rep || 0,
-      max: maxRev,
-      color: "#93c5fd",
-      label: "z toho Repetiv",
-      stripe: true
-    }), /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_new - (r.rev_rep || 0),
-      max: maxRev,
-      color: "#2563eb",
-      label: "NEW"
-    }), /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_mo,
-      max: maxRev,
-      color: "#f59e0b",
-      label: "MO"
-    }), /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_vo - (r.rev_vip || 0),
-      max: maxRev,
-      color: "#8b5cf6",
-      label: "VO (klasick\xE9)"
-    }), /*#__PURE__*/React.createElement(BarSegment, {
-      value: r.rev_vip || 0,
-      max: maxRev,
-      color: "#c4b5fd",
-      label: "VIP (stav+skupina)",
-      minShow: true
-    })), [].map(function (vr, vi) {
-      var isAct = vr.vo === includeVoCredits && vr.fix === (includeFixed ? totalFixed : 0);
-      return /*#__PURE__*/React.createElement("div", {
-        key: vi,
-        style: {
-          width: 62,
-          fontSize: 11,
-          fontWeight: isAct ? 700 : 400,
-          color: isAct ? "#059669" : "#9ca3af",
-          textAlign: "right",
-          flexShrink: 0
-        }
-      }, fmt(vr.byMonth[r.month]));
-    }));
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 14,
-      marginTop: 8,
-      fontSize: 11,
-      color: "#6b7280"
-    }
-  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "inline-block",
-      width: 10,
-      height: 10,
-      backgroundColor: "#2563eb",
-      borderRadius: 2,
-      marginRight: 4
-    }
-  }), "NEW"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "inline-block",
-      width: 10,
-      height: 10,
-      background: "repeating-linear-gradient(45deg, #93c5fd, #93c5fd 2px, #1e3a8a 2px, #1e3a8a 4px)",
-      borderRadius: 2,
-      marginRight: 4
-    }
-  }), "z toho Repetiv (v NEW)"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "inline-block",
-      width: 10,
-      height: 10,
-      backgroundColor: "#f59e0b",
-      borderRadius: 2,
-      marginRight: 4
-    }
-  }), "MO"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "inline-block",
-      width: 10,
-      height: 10,
-      backgroundColor: "#8b5cf6",
-      borderRadius: 2,
-      marginRight: 4
-    }
-  }), "VO (klasick\xE9)"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "inline-block",
-      width: 10,
-      height: 10,
-      backgroundColor: "#c4b5fd",
-      borderRadius: 2,
-      marginRight: 4
-    }
-  }), "VIP (stav+skupina, v\xA0VO)"), /*#__PURE__*/React.createElement("span", {
-    style: {
-      marginLeft: 8,
-      color: "#9ca3af"
-    }
-  }, ""), [].map(function (vd, vi) {
-    var isAct = vd.vo === includeVoCredits && vd.fix === (includeFixed ? totalFixed : 0);
-    return /*#__PURE__*/React.createElement("span", {
-      key: vi,
-      style: {
-        fontWeight: isAct ? 700 : 400,
-        color: isAct ? "#059669" : "#9ca3af"
-      }
-    }, vd["short"]);
-  }))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      overflowX: "auto",
-      borderRadius: 10,
-      border: "1px solid #e5e7eb"
-    }
-  }, /*#__PURE__*/React.createElement("table", {
-    style: {
-      width: "100%",
-      borderCollapse: "collapse",
-      minWidth: 1150
-    }
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
-    style: _objectSpread(_objectSpread({}, headerCell), {}, {
-      textAlign: "left"
-    })
-  }, "M\u011Bs\xEDc"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Obj."), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Obrat NEW"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Obrat MO"), /*#__PURE__*/React.createElement("th", {
-    style: _objectSpread(_objectSpread({}, headerCell), {}, {
-      backgroundColor: includeVoCredits ? "#eff6ff" : "#f8fafc"
-    })
-  }, "Obrat VO"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Mar\u017Ee 70%"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Ad costs"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Fixn\xED N"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Pod\xEDl kred."), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Kredity\u2192N"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Pod\xEDl fix."), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "Fixn\xED\u2192N"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "PNO"), /*#__PURE__*/React.createElement("th", {
-    style: headerCell
-  }, "\u010Cist\xFD obrat"), /*#__PURE__*/React.createElement("th", {
-    style: _objectSpread(_objectSpread({}, headerCell), {}, {
-      color: "#059669"
-    })
-  }, "Provize"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(function (r) {
-    return /*#__PURE__*/React.createElement("tr", {
-      key: r.month,
-      style: {
-        transition: "background 0.15s"
-      },
-      onMouseEnter: function onMouseEnter(e) {
-        return e.currentTarget.style.backgroundColor = "#f9fafb";
-      },
-      onMouseLeave: function onMouseLeave(e) {
-        return e.currentTarget.style.backgroundColor = "transparent";
-      }
-    }, /*#__PURE__*/React.createElement("td", {
-      style: labelCell
-    }, /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
-      /*#__PURE__*/React.createElement("span", null, r.label),
-      /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, fontWeight: 400, fontSize: 11 } },
-        /*#__PURE__*/React.createElement("label", { title: "Zamknout měs\xEDc (přestane se přepoč\xEDt\xE1vat živě)", style: { display: "flex", alignItems: "center", gap: 3, cursor: "pointer", color: isLocked(r.month) ? "#b45309" : "#9ca3af" } },
-          /*#__PURE__*/React.createElement("input", { type: "checkbox", checked: isLocked(r.month), onChange: function () { toggleLock(r.month); }, style: { cursor: "pointer", margin: 0 } }),
-          isLocked(r.month) ? "🔒 Zamčeno" : "Zamknout"),
-        /*#__PURE__*/React.createElement("button", { onClick: function () { recalcMonth(r.month); }, disabled: busyMonth === r.month, title: "Znovu nač\xEDst živ\xE1 data ze Shoptetu a přepoč\xEDtat měs\xEDc", style: { border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: busyMonth === r.month ? "default" : "pointer", fontSize: 11, padding: "2px 6px", color: "#374151", whiteSpace: "nowrap" } }, busyMonth === r.month ? "…" : "↻ Přepoč\xEDtat"))
-    )), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, r.cnt_new + r.cnt_mo + r.cnt_vo), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmt(r.rev_new)), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmt(r.rev_mo)), /*#__PURE__*/React.createElement("td", {
-      style: _objectSpread(_objectSpread({}, cellBase), {}, {
-        backgroundColor: includeVoCredits ? "#eff6ff" : "transparent",
-        color: includeVoCredits ? "#1d4ed8" : "#9ca3af"
-      })
-    }, fmt(r.rev_vo)), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmt(r.marze)), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmt(r.ad_cost)), /*#__PURE__*/React.createElement("td", {
-      style: _objectSpread(_objectSpread({}, cellBase), {}, {
-        color: "#b45309"
-      })
-    }, fmt(fixedTotalFor(r.month))), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmtPct(r.creditShare)), /*#__PURE__*/React.createElement("td", {
-      style: _objectSpread(_objectSpread({}, cellBase), {}, {
-        color: "#f97316",
-        fontWeight: 600
-      })
-    }, fmt(r.kredityPomer)), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmtPct(r.fixedShare)), /*#__PURE__*/React.createElement("td", {
-      style: _objectSpread(_objectSpread({}, cellBase), {}, {
-        color: "#b45309",
-        fontWeight: 600
-      })
-    }, fmt(r.fixedPomer)), /*#__PURE__*/React.createElement("td", {
-      style: cellBase
-    }, fmtPct(r.pno)), /*#__PURE__*/React.createElement("td", {
-      style: _objectSpread(_objectSpread({}, cellBase), {}, {
-        color: r.cistyObrat < 0 ? "#ef4444" : "#111827",
-        fontWeight: 600
-      })
-    }, fmt(r.cistyObrat)), /*#__PURE__*/React.createElement("td", {
-      style: _objectSpread(_objectSpread({}, cellBase), {}, {
-        color: "#059669",
-        fontWeight: 700,
-        fontSize: 13
-      })
-    }, fmt(r.provize)));
-  }), /*#__PURE__*/React.createElement("tr", {
-    style: {
-      backgroundColor: "#f0fdf4"
-    }
-  }, /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, labelCell), {}, {
-      fontWeight: 800,
-      fontSize: 13
-    })
-  }, "CELKEM"), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, totals.cnt_new + totals.cnt_mo + totals.cnt_vo), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, fmt(totals.rev_new)), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, fmt(totals.rev_mo)), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, fmt(totals.rev_vo)), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, fmt(totals.marze)), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, fmt(totals.ad_cost)), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700,
-      color: "#b45309"
-    })
-  }, fmt(totalFixedPeriod)), /*#__PURE__*/React.createElement("td", {
-    style: cellBase
-  }, "\u2014"), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700,
-      color: "#f97316"
-    })
-  }, fmt(totals.kredityPomer)), /*#__PURE__*/React.createElement("td", {
-    style: cellBase
-  }, "\u2014"), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700,
-      color: "#b45309"
-    })
-  }, fmt(totals.fixedPomer)), /*#__PURE__*/React.createElement("td", {
-    style: cellBase
-  }, "\u2014"), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 700
-    })
-  }, fmt(totals.cistyObrat)), /*#__PURE__*/React.createElement("td", {
-    style: _objectSpread(_objectSpread({}, cellBase), {}, {
-      fontWeight: 800,
-      color: "#059669",
-      fontSize: 15
-    })
-  }, fmt(totals.provize), " K\u010D"))))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12,
-      padding: "14px 18px",
-      backgroundColor: "#f8fafc",
-      borderRadius: 10,
-      border: "1px solid #e5e7eb",
-      fontSize: 12,
-      color: "#4b5563",
-      lineHeight: 1.8
-    }
-  }, /*#__PURE__*/React.createElement("strong", null, "Vzorec:"), /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " = NEW / (NEW + MO", includeVoCredits ? " + VO" : "", ") \u2014 VO ", includeVoCredits ? "ponižuje" : "vyloučeno", /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " = NEW / (NEW + MO + VO) \u2014 v\u017Edy v\u010D. VO", /*#__PURE__*/React.createElement("br", null), "Kredity\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " \xD7 Ad costs | Fixn\xED\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " \xD7 Fixn\xED N", /*#__PURE__*/React.createElement("br", null), "Provize = 40% \xD7 (Obrat", /*#__PURE__*/React.createElement("sub", null, "NEW"), " \xD7 70% \u2212 Kredity\u2192NEW \u2212 Fixn\xED\u2192NEW)", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("strong", null, "Skupiny:"), " a) NEW \u2192 provize | b) MO \u2192 poni\u017Euje kredity i fixn\xED N | c) VO \u2192 ", includeVoCredits ? "ponižuje kredity i fixní N" : "ponižuje pouze fixní N", " | Fixn\xED N: ", includeFixed ? getFixedList(fixedByMonth, lastMonth).filter(function (c) {
-    return c.amount > 0;
-  }).map(function (c) {
-    return c.name + " " + fmt(c.amount);
-  }).concat(["Repetiv " + fmt(repetivCostMonth(lastMonth)) + " (dyn.)"]).join(" + ") + " = " + fmt(totalFixed) + " Kč/měs" : "vypnuto"), function () {
+      /*#__PURE__*/React.createElement(AnalyticsPage, { rows: rows, selIdx: selectedMonth, setSelIdx: setSelectedMonth, monthFixedFor: fixedTotalFor, includeVoCredits: includeVoCredits, goals: goals, setGoals: setGoals }), function () {
     var monthLabels = DATA.map(function (d) {
       return d.label.replace("2025", "'25").replace("2026", "'26").replace(" *", "");
     });
@@ -2908,7 +2481,471 @@ function App() {
     storeUrl: SHARED_STORE_URL,
     month: selectedMonthStr,
     monthLabel: selectedMonthLabel
-  }), /*#__PURE__*/React.createElement("div", { style: { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 } },
+  }));
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      maxWidth: 1200,
+      margin: "0 auto",
+      padding: "24px 16px",
+      color: "#111827"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      marginBottom: 4
+    }
+  }, "Hardsmile \u2014 Kalkulace proviz\xED"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8, flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: function () { try { window.location.reload(); } catch (e) {} },
+    style: { padding: "10px 18px", border: "1px solid #059669", borderRadius: 8, backgroundColor: "#fff", color: "#059669", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
+  }, "\ud83d\udd04 Na\u010d\u00edst"), /*#__PURE__*/React.createElement("button", {
+    onClick: doSave,
+    style: { padding: "10px 18px", border: "none", borderRadius: 8, backgroundColor: savedState ? "#047857" : "#059669", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }
+  }, savedState ? "Ulo\u017eeno \u2713" : "\ud83d\udcbe Ulo\u017eit zm\u011bny"))), tabBar, /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#6b7280",
+      fontSize: 14,
+      marginBottom: 24
+    }
+  }, (rows[0] ? rows[0].label : "") + " – " + (rows[rows.length - 1] ? rows[rows.length - 1].label : "") + " | Marže 70 % | Provize 40 % z čist\xE9ho obratu"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      backgroundColor: "#f0fdf4",
+      border: "1px solid #bbf7d0",
+      borderRadius: 8,
+      padding: "10px 14px",
+      marginBottom: 20,
+      fontSize: 12,
+      color: "#166534",
+      lineHeight: 1.5
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, "Model: VO mimo kredity, fixn\u00ED n\u00E1klady na v\u0161echny zdroje. "), "Velkoobchod (VO) se nepou\u017E\u00EDv\u00E1 pro pon\u00ED\u017Een\u00ED n\u00E1klad\u016F do reklam \u2014 kredity = NEW / (NEW + MO). Fixn\u00ED n\u00E1klady (B2Metrics, Ecomail, Shoptet) se pod\u00EDl\u00ED na v\u0161ech zdroj\u00EDch \u2014 denomin\u00E1tor = NEW + MO + VO."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "none",
+      gap: 12,
+      alignItems: "stretch",
+      marginBottom: 20,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return setIncludeVoCredits(!includeVoCredits);
+    },
+    style: {
+      flex: 1,
+      minWidth: 200,
+      padding: "14px 18px",
+      borderRadius: 10,
+      cursor: "pointer",
+      transition: "all 0.2s",
+      border: "2px solid " + (includeVoCredits ? "#8b5cf6" : "#e5e7eb"),
+      backgroundColor: includeVoCredits ? "#f5f3ff" : "#fff",
+      color: includeVoCredits ? "#7c3aed" : "#6b7280"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 14,
+      marginBottom: 2
+    }
+  }, includeVoCredits ? "S VO v kreditech" : "Bez VO v kreditech"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12
+    }
+  }, includeVoCredits ? "Kredity = NEW / (NEW + MO + VO)" : "Kredity = NEW / (NEW + MO)")), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      return setIncludeFixed(!includeFixed);
+    },
+    style: {
+      flex: 1,
+      minWidth: 200,
+      padding: "14px 18px",
+      borderRadius: 10,
+      cursor: "pointer",
+      transition: "all 0.2s",
+      border: "2px solid " + (includeFixed ? "#b45309" : "#e5e7eb"),
+      backgroundColor: includeFixed ? "#fffbeb" : "#fff",
+      color: includeFixed ? "#b45309" : "#6b7280"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 14,
+      marginBottom: 2
+    }
+  }, includeFixed ? "S fixními N" : "Bez fixních N"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12
+    }
+  }, includeFixed ? fmt(totalFixed) + " Kč/měs v kalkulaci" : "Pouze ad costs (kredity)"))), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap", alignItems: "stretch" } }, /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 170px", backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 6 } }, "Přehled za měsíc"), /*#__PURE__*/React.createElement("select", { value: selectedMonth, onChange: function (e) { setSelectedMonth(parseInt(e.target.value)); }, style: { width: "100%", fontSize: 14, fontWeight: 700, color: "#111827", border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 8px", backgroundColor: "#fff", cursor: "pointer" } }, rows.map(function (r, idx) { return /*#__PURE__*/React.createElement("option", { key: r.month, value: idx }, r.label); }))), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Obrat NEW"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#2563eb" } }, fmt(sel.rev_new || 0)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, (sel.cnt_new || 0) + " obj")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Ad costs"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#ef4444" } }, fmt(sel.ad_cost || 0)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, "reklama")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Fixní náklady"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#b45309" } }, fmt(selFixed)), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, "za měsíc")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "Provize"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 20, fontWeight: 800, color: "#111827" } }, fmt(sel.provize || 0), " Kč"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, sel.label || "")), /*#__PURE__*/React.createElement("div", { style: { flex: "1 1 150px", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } }, /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#6b7280", marginBottom: 3 } }, "z toho Repetiv"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#7c3aed" } }, fmt(sel.rev_rep || 0), " Kč"), /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, (sel.cnt_rep || 0) + " obj — v NEW"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "baseline",
+      gap: 10,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontSize: 14,
+      fontWeight: 700,
+      color: "#374151",
+      margin: 0
+    }
+  }, "Struktura obratu po m\u011Bs\xEDc\xEDch"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "none",
+      gap: 8,
+      fontSize: 10,
+      color: "#9ca3af"
+    }
+  }, variantDefs.map(function (vd, vi) {
+    var isAct = vd.vo === includeVoCredits && vd.fix === (includeFixed ? totalFixed : 0);
+    return /*#__PURE__*/React.createElement("span", {
+      key: vi,
+      style: {
+        fontWeight: isAct ? 700 : 400,
+        color: isAct ? "#059669" : "#9ca3af"
+      }
+    }, vd["short"]);
+  }))), rows.map(function (r) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: r.month,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 5
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 85,
+        fontSize: 12,
+        fontWeight: 600,
+        color: "#374151",
+        flexShrink: 0
+      }
+    }, r.label.replace("2025", "'25").replace("2026", "'26")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        display: "flex",
+        height: 24,
+        borderRadius: 4,
+        overflow: "hidden",
+        backgroundColor: "#f1f5f9"
+      }
+    }, /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_rep || 0,
+      max: maxRev,
+      color: "#93c5fd",
+      label: "z toho Repetiv",
+      stripe: true
+    }), /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_new - (r.rev_rep || 0),
+      max: maxRev,
+      color: "#2563eb",
+      label: "NEW"
+    }), /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_mo,
+      max: maxRev,
+      color: "#f59e0b",
+      label: "MO"
+    }), /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_vo - (r.rev_vip || 0),
+      max: maxRev,
+      color: "#8b5cf6",
+      label: "VO (klasick\xE9)"
+    }), /*#__PURE__*/React.createElement(BarSegment, {
+      value: r.rev_vip || 0,
+      max: maxRev,
+      color: "#c4b5fd",
+      label: "VIP (stav+skupina)",
+      minShow: true
+    })), [].map(function (vr, vi) {
+      var isAct = vr.vo === includeVoCredits && vr.fix === (includeFixed ? totalFixed : 0);
+      return /*#__PURE__*/React.createElement("div", {
+        key: vi,
+        style: {
+          width: 62,
+          fontSize: 11,
+          fontWeight: isAct ? 700 : 400,
+          color: isAct ? "#059669" : "#9ca3af",
+          textAlign: "right",
+          flexShrink: 0
+        }
+      }, fmt(vr.byMonth[r.month]));
+    }));
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 14,
+      marginTop: 8,
+      fontSize: 11,
+      color: "#6b7280"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      backgroundColor: "#2563eb",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "NEW"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      background: "repeating-linear-gradient(45deg, #93c5fd, #93c5fd 2px, #1e3a8a 2px, #1e3a8a 4px)",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "z toho Repetiv (v NEW)"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      backgroundColor: "#f59e0b",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "MO"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      backgroundColor: "#8b5cf6",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "VO (klasick\xE9)"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-block",
+      width: 10,
+      height: 10,
+      backgroundColor: "#c4b5fd",
+      borderRadius: 2,
+      marginRight: 4
+    }
+  }), "VIP (stav+skupina, v\xA0VO)"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      marginLeft: 8,
+      color: "#9ca3af"
+    }
+  }, ""), [].map(function (vd, vi) {
+    var isAct = vd.vo === includeVoCredits && vd.fix === (includeFixed ? totalFixed : 0);
+    return /*#__PURE__*/React.createElement("span", {
+      key: vi,
+      style: {
+        fontWeight: isAct ? 700 : 400,
+        color: isAct ? "#059669" : "#9ca3af"
+      }
+    }, vd["short"]);
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      overflowX: "auto",
+      borderRadius: 10,
+      border: "1px solid #e5e7eb"
+    }
+  }, /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: "100%",
+      borderCollapse: "collapse",
+      minWidth: 1150
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    style: _objectSpread(_objectSpread({}, headerCell), {}, {
+      textAlign: "left"
+    })
+  }, "M\u011Bs\xEDc"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Obj."), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Obrat NEW"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Obrat MO"), /*#__PURE__*/React.createElement("th", {
+    style: _objectSpread(_objectSpread({}, headerCell), {}, {
+      backgroundColor: includeVoCredits ? "#eff6ff" : "#f8fafc"
+    })
+  }, "Obrat VO"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Mar\u017Ee 70%"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Ad costs"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Fixn\xED N"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Pod\xEDl kred."), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Kredity\u2192N"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Pod\xEDl fix."), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "Fixn\xED\u2192N"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "PNO"), /*#__PURE__*/React.createElement("th", {
+    style: headerCell
+  }, "\u010Cist\xFD obrat"), /*#__PURE__*/React.createElement("th", {
+    style: _objectSpread(_objectSpread({}, headerCell), {}, {
+      color: "#059669"
+    })
+  }, "Provize"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(function (r) {
+    return /*#__PURE__*/React.createElement("tr", {
+      key: r.month,
+      style: {
+        transition: "background 0.15s"
+      },
+      onMouseEnter: function onMouseEnter(e) {
+        return e.currentTarget.style.backgroundColor = "#f9fafb";
+      },
+      onMouseLeave: function onMouseLeave(e) {
+        return e.currentTarget.style.backgroundColor = "transparent";
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      style: labelCell
+    }, /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+      /*#__PURE__*/React.createElement("span", null, r.label),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, fontWeight: 400, fontSize: 11 } },
+        /*#__PURE__*/React.createElement("label", { title: "Zamknout měs\xEDc (přestane se přepoč\xEDt\xE1vat živě)", style: { display: "flex", alignItems: "center", gap: 3, cursor: "pointer", color: isLocked(r.month) ? "#b45309" : "#9ca3af" } },
+          /*#__PURE__*/React.createElement("input", { type: "checkbox", checked: isLocked(r.month), onChange: function () { toggleLock(r.month); }, style: { cursor: "pointer", margin: 0 } }),
+          isLocked(r.month) ? "🔒 Zamčeno" : "Zamknout"),
+        /*#__PURE__*/React.createElement("button", { onClick: function () { recalcMonth(r.month); }, disabled: busyMonth === r.month, title: "Znovu nač\xEDst živ\xE1 data ze Shoptetu a přepoč\xEDtat měs\xEDc", style: { border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: busyMonth === r.month ? "default" : "pointer", fontSize: 11, padding: "2px 6px", color: "#374151", whiteSpace: "nowrap" } }, busyMonth === r.month ? "…" : "↻ Přepoč\xEDtat"))
+    )), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, r.cnt_new + r.cnt_mo + r.cnt_vo), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmt(r.rev_new)), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmt(r.rev_mo)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, {
+        backgroundColor: includeVoCredits ? "#eff6ff" : "transparent",
+        color: includeVoCredits ? "#1d4ed8" : "#9ca3af"
+      })
+    }, fmt(r.rev_vo)), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmt(r.marze)), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmt(r.ad_cost)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, {
+        color: "#b45309"
+      })
+    }, fmt(fixedTotalFor(r.month))), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmtPct(r.creditShare)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, {
+        color: "#f97316",
+        fontWeight: 600
+      })
+    }, fmt(r.kredityPomer)), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmtPct(r.fixedShare)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, {
+        color: "#b45309",
+        fontWeight: 600
+      })
+    }, fmt(r.fixedPomer)), /*#__PURE__*/React.createElement("td", {
+      style: cellBase
+    }, fmtPct(r.pno)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, {
+        color: r.cistyObrat < 0 ? "#ef4444" : "#111827",
+        fontWeight: 600
+      })
+    }, fmt(r.cistyObrat)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, {
+        color: "#059669",
+        fontWeight: 700,
+        fontSize: 13
+      })
+    }, fmt(r.provize)));
+  }), /*#__PURE__*/React.createElement("tr", {
+    style: {
+      backgroundColor: "#f0fdf4"
+    }
+  }, /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, labelCell), {}, {
+      fontWeight: 800,
+      fontSize: 13
+    })
+  }, "CELKEM"), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, totals.cnt_new + totals.cnt_mo + totals.cnt_vo), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, fmt(totals.rev_new)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, fmt(totals.rev_mo)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, fmt(totals.rev_vo)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, fmt(totals.marze)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, fmt(totals.ad_cost)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700,
+      color: "#b45309"
+    })
+  }, fmt(totalFixedPeriod)), /*#__PURE__*/React.createElement("td", {
+    style: cellBase
+  }, "\u2014"), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700,
+      color: "#f97316"
+    })
+  }, fmt(totals.kredityPomer)), /*#__PURE__*/React.createElement("td", {
+    style: cellBase
+  }, "\u2014"), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700,
+      color: "#b45309"
+    })
+  }, fmt(totals.fixedPomer)), /*#__PURE__*/React.createElement("td", {
+    style: cellBase
+  }, "\u2014"), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 700
+    })
+  }, fmt(totals.cistyObrat)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 800,
+      color: "#059669",
+      fontSize: 15
+    })
+  }, fmt(totals.provize), " K\u010D"))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      padding: "14px 18px",
+      backgroundColor: "#f8fafc",
+      borderRadius: 10,
+      border: "1px solid #e5e7eb",
+      fontSize: 12,
+      color: "#4b5563",
+      lineHeight: 1.8
+    }
+  }, /*#__PURE__*/React.createElement("strong", null, "Vzorec:"), /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " = NEW / (NEW + MO", includeVoCredits ? " + VO" : "", ") \u2014 VO ", includeVoCredits ? "ponižuje" : "vyloučeno", /*#__PURE__*/React.createElement("br", null), "Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " = NEW / (NEW + MO + VO) \u2014 v\u017Edy v\u010D. VO", /*#__PURE__*/React.createElement("br", null), "Kredity\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "kred"), " \xD7 Ad costs | Fixn\xED\u2192NEW = Pod\xEDl", /*#__PURE__*/React.createElement("sub", null, "fix"), " \xD7 Fixn\xED N", /*#__PURE__*/React.createElement("br", null), "Provize = 40% \xD7 (Obrat", /*#__PURE__*/React.createElement("sub", null, "NEW"), " \xD7 70% \u2212 Kredity\u2192NEW \u2212 Fixn\xED\u2192NEW)", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("strong", null, "Skupiny:"), " a) NEW \u2192 provize | b) MO \u2192 poni\u017Euje kredity i fixn\xED N | c) VO \u2192 ", includeVoCredits ? "ponižuje kredity i fixní N" : "ponižuje pouze fixní N", " | Fixn\xED N: ", includeFixed ? getFixedList(fixedByMonth, lastMonth).filter(function (c) {
+    return c.amount > 0;
+  }).map(function (c) {
+    return c.name + " " + fmt(c.amount);
+  }).concat(["Repetiv " + fmt(repetivCostMonth(lastMonth)) + " (dyn.)"]).join(" + ") + " = " + fmt(totalFixed) + " Kč/měs" : "vypnuto"), /*#__PURE__*/React.createElement("div", { style: { backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "16px 20px", marginBottom: 24 } },
     /*#__PURE__*/React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#374151", marginBottom: 4 } }, "Ruční úprava obratů — ", sel.label || selectedMonthLabel),
     /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, "Přepíše živá data ze Shoptetu pro vybraný měsíc (uloží se sdíleně)."),
     /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" } }, [{ f: "rev_new", l: "Obrat NEW" }, { f: "rev_mo", l: "Obrat MO" }, { f: "rev_vo", l: "Obrat VO" }, { f: "cnt_new", l: "Počet NEW" }, { f: "cnt_mo", l: "Počet MO" }, { f: "cnt_vo", l: "Počet VO" }].map(function (fld) {
