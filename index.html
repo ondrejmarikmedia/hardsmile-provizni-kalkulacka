@@ -1411,39 +1411,47 @@ function PieChart(_refP) {
   var h = React.createElement;
   var data = (_refP.data || []).filter(function (d) { return (d.value || 0) > 0; });
   var size = _refP.size || 170;
+  var _hv = useState(-1), hv = _hv[0], setHv = _hv[1];
   var total = data.reduce(function (s, d) { return s + (d.value || 0); }, 0);
-  var cx = size / 2, cy = size / 2, r = size / 2 - 2, ri = r * 0.58;
-  var centerTop = _refP.centerLabel != null ? _refP.centerLabel : fmt(total);
-  var centerSub = _refP.centerSub || "";
+  var cx = size / 2, cy = size / 2, r = size / 2 - 4, ri = r * 0.58;
   if (total <= 0) {
     return h("svg", { width: size, height: size },
       h("circle", { cx: cx, cy: cy, r: r, fill: "none", stroke: "#e5e7eb", strokeWidth: 2 }),
       h("text", { x: cx, y: cy, textAnchor: "middle", dominantBaseline: "central", fontSize: 12, fill: "#9ca3af" }, "—"));
   }
   var ang = -Math.PI / 2, arcs = [];
+  var ringPath = function (r0, r1, a1, a2, lg, full) {
+    if (full) {
+      return "M " + (cx + r1) + " " + cy + " A " + r1 + " " + r1 + " 0 1 1 " + (cx - r1) + " " + cy + " A " + r1 + " " + r1 + " 0 1 1 " + (cx + r1) + " " + cy + " Z M " + (cx + r0) + " " + cy + " A " + r0 + " " + r0 + " 0 1 0 " + (cx - r0) + " " + cy + " A " + r0 + " " + r0 + " 0 1 0 " + (cx + r0) + " " + cy + " Z";
+    }
+    var x1o = cx + r1 * Math.cos(a1), y1o = cy + r1 * Math.sin(a1), x2o = cx + r1 * Math.cos(a2), y2o = cy + r1 * Math.sin(a2);
+    var x1i = cx + r0 * Math.cos(a1), y1i = cy + r0 * Math.sin(a1), x2i = cx + r0 * Math.cos(a2), y2i = cy + r0 * Math.sin(a2);
+    return "M " + x1o.toFixed(2) + " " + y1o.toFixed(2) + " A " + r1 + " " + r1 + " 0 " + lg + " 1 " + x2o.toFixed(2) + " " + y2o.toFixed(2) + " L " + x2i.toFixed(2) + " " + y2i.toFixed(2) + " A " + r0 + " " + r0 + " 0 " + lg + " 0 " + x1i.toFixed(2) + " " + y1i.toFixed(2) + " Z";
+  };
   data.forEach(function (d, i) {
     var frac = d.value / total, a1 = ang, a2 = ang + frac * 2 * Math.PI;
     ang = a2;
     var pct = Math.round(frac * 100);
-    var tip = h("title", null, d.label + ": " + fmt(d.value) + (d.unit ? " " + d.unit : "") + " (" + pct + " %)");
-    if (frac >= 0.999) {
-      arcs.push(h("path", { key: i, fillRule: "evenodd", fill: d.color,
-        d: "M " + (cx + r) + " " + cy + " A " + r + " " + r + " 0 1 1 " + (cx - r) + " " + cy + " A " + r + " " + r + " 0 1 1 " + (cx + r) + " " + cy + " Z M " + (cx + ri) + " " + cy + " A " + ri + " " + ri + " 0 1 0 " + (cx - ri) + " " + cy + " A " + ri + " " + ri + " 0 1 0 " + (cx + ri) + " " + cy + " Z" }, tip));
-      return;
-    }
+    var isHv = hv === i, dim = hv >= 0 && !isHv;
+    var r1 = isHv ? r + 3 : r;
+    var full = frac >= 0.999;
     var large = (a2 - a1) > Math.PI ? 1 : 0;
-    var x1o = cx + r * Math.cos(a1), y1o = cy + r * Math.sin(a1), x2o = cx + r * Math.cos(a2), y2o = cy + r * Math.sin(a2);
-    var x1i = cx + ri * Math.cos(a1), y1i = cy + ri * Math.sin(a1), x2i = cx + ri * Math.cos(a2), y2i = cy + ri * Math.sin(a2);
-    var dstr = "M " + x1o.toFixed(2) + " " + y1o.toFixed(2) + " A " + r + " " + r + " 0 " + large + " 1 " + x2o.toFixed(2) + " " + y2o.toFixed(2) + " L " + x2i.toFixed(2) + " " + y2i.toFixed(2) + " A " + ri + " " + ri + " 0 " + large + " 0 " + x1i.toFixed(2) + " " + y1i.toFixed(2) + " Z";
-    arcs.push(h("path", { key: i, d: dstr, fill: d.color, stroke: "#fff", strokeWidth: 1.5 }, tip));
-    if (frac >= 0.06) {
-      var mid = (a1 + a2) / 2, lr = (r + ri) / 2;
-      arcs.push(h("text", { key: "t" + i, x: cx + lr * Math.cos(mid), y: cy + lr * Math.sin(mid), textAnchor: "middle", dominantBaseline: "central", fontSize: 10, fontWeight: 700, fill: "#fff" }, pct + "%"));
+    var mkHandlers = (function (idx) { return { onMouseEnter: function () { setHv(idx); }, onMouseLeave: function () { setHv(-1); } }; })(i);
+    arcs.push(h("path", Object.assign({ key: i, d: ringPath(ri, r1, a1, a2, large, full), fill: d.color, stroke: "#fff", strokeWidth: isHv ? 2 : 1.5, opacity: dim ? 0.3 : 1, style: { transition: "opacity 0.12s", cursor: "pointer" } }, mkHandlers),
+      h("title", null, d.label + ": " + fmt(d.value) + (d.unit ? " " + d.unit : "") + " (" + pct + " %)")));
+    if (frac >= 0.06 && !full) {
+      var mid = (a1 + a2) / 2, lr = (ri + r1) / 2;
+      arcs.push(h("text", { key: "t" + i, x: cx + lr * Math.cos(mid), y: cy + lr * Math.sin(mid), textAnchor: "middle", dominantBaseline: "central", fontSize: 10, fontWeight: 700, fill: "#fff", opacity: dim ? 0.3 : 1, style: { pointerEvents: "none" } }, pct + "%"));
     }
   });
+  var cen = hv >= 0 ? data[hv] : null;
+  var lbl = cen ? String(cen.label) : "";
+  if (lbl.length > 14) lbl = lbl.substring(0, 13) + "…";
+  var centerTop = cen ? fmt(cen.value) : (_refP.centerLabel != null ? _refP.centerLabel : fmt(total));
+  var centerSub = cen ? (lbl + " · " + Math.round(cen.value / total * 100) + " %") : (_refP.centerSub || "");
   return h("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size }, arcs,
-    h("text", { x: cx, y: cy - 6, textAnchor: "middle", dominantBaseline: "central", fontSize: 16, fontWeight: 800, fill: "#111827" }, centerTop),
-    centerSub ? h("text", { x: cx, y: cy + 12, textAnchor: "middle", dominantBaseline: "central", fontSize: 9, fill: "#9ca3af" }, centerSub) : null);
+    h("text", { x: cx, y: cy - 6, textAnchor: "middle", dominantBaseline: "central", fontSize: 16, fontWeight: 800, fill: cen ? cen.color : "#111827", style: { pointerEvents: "none" } }, centerTop),
+    centerSub ? h("text", { x: cx, y: cy + 12, textAnchor: "middle", dominantBaseline: "central", fontSize: 9, fill: "#9ca3af", style: { pointerEvents: "none" } }, centerSub) : null);
 }
 function pieBlock(title, note, data, unitLabel) {
   var h = React.createElement;
@@ -1678,13 +1686,21 @@ function AnalyticsPage(props) {
             h("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 10px", cursor: "pointer" } },
               h("input", { type: "checkbox", checked: simVo, onChange: function (e) { setSimVo(e.target.checked); } }), "VO v kreditech"),
             h("button", { onClick: _resetSim, style: { padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "↺ Reset na skutečnost")),
-          h("div", { style: { flex: "1 1 300px", display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" } },
-            resCell("Marže", cur.marze, cur.marze - base.marze, "#10b981", false, true),
-            resCell("Kredity→N", cur.kred, cur.kred - base.kred, "#ef4444", false, false),
-            resCell("Fixní→N", cur.fixni, cur.fixni - base.fixni, "#f59e0b", false, false),
-            resCell("Čistý obrat", cur.cisty, cur.cisty - base.cisty, "#2563eb", false, true),
-            resCell("Provize", cur.prov, cur.prov - base.prov, "#7c3aed", false, true),
-            resCell("PNO", cur.pno, cur.pno - base.pno, "#b45309", true, false)))));
+          h("div", { style: { flex: "1 1 320px" } },
+            h("div", { style: { display: "flex", gap: 10, marginBottom: 10 } },
+              h("div", { style: { flex: 1, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 10, padding: "12px 14px" } },
+                h("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.3px" } }, "Provize"),
+                h("div", { style: { fontSize: 22, fontWeight: 800, color: "#7c3aed" } }, fmt(cur.prov) + " Kč"),
+                Math.abs(cur.prov - base.prov) < 1e-9 ? null : h("div", { style: { fontSize: 11, fontWeight: 600, color: (cur.prov - base.prov) > 0 ? "#059669" : "#dc2626" } }, ((cur.prov - base.prov) > 0 ? "▲ " : "▼ ") + fmt(Math.abs(cur.prov - base.prov)) + " Kč")),
+              h("div", { style: { flex: 1, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "12px 14px" } },
+                h("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.3px" } }, "PNO"),
+                h("div", { style: { fontSize: 22, fontWeight: 800, color: "#b45309" } }, (cur.pno * 100).toFixed(1) + " %"),
+                Math.abs(cur.pno - base.pno) < 1e-9 ? null : h("div", { style: { fontSize: 11, fontWeight: 600, color: (cur.pno - base.pno) < 0 ? "#059669" : "#dc2626" } }, ((cur.pno - base.pno) > 0 ? "▲ " : "▼ ") + (Math.abs(cur.pno - base.pno) * 100).toFixed(1) + " pb"))),
+            h("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" } },
+              resCell("Marže", cur.marze, cur.marze - base.marze, "#10b981", false, true),
+              resCell("Kredity→N", cur.kred, cur.kred - base.kred, "#ef4444", false, false),
+              resCell("Fixní→N", cur.fixni, cur.fixni - base.fixni, "#f59e0b", false, false),
+              resCell("Čistý obrat", cur.cisty, cur.cisty - base.cisty, "#2563eb", false, true))))));
   })();
 
   // 5) Cíle a plnění
@@ -2811,6 +2827,8 @@ function App() {
       backgroundColor: includeVoCredits ? "#eff6ff" : "#f8fafc"
     })
   }, "Obrat VO"), /*#__PURE__*/React.createElement("th", {
+    style: _objectSpread(_objectSpread({}, headerCell), {}, { color: "#0369a1" })
+  }, "Obrat celkem"), /*#__PURE__*/React.createElement("th", {
     style: headerCell
   }, "Mar\u017Ee 70%"), /*#__PURE__*/React.createElement("th", {
     style: headerCell
@@ -2865,6 +2883,8 @@ function App() {
         color: includeVoCredits ? "#1d4ed8" : "#9ca3af"
       })
     }, fmt(r.rev_vo)), /*#__PURE__*/React.createElement("td", {
+      style: _objectSpread(_objectSpread({}, cellBase), {}, { fontWeight: 700, color: "#0369a1" })
+    }, fmt(r.rev_new + r.rev_mo + r.rev_vo)), /*#__PURE__*/React.createElement("td", {
       style: cellBase
     }, fmt(r.marze)), /*#__PURE__*/React.createElement("td", {
       style: cellBase
@@ -2926,6 +2946,11 @@ function App() {
       fontWeight: 700
     })
   }, fmt(totals.rev_vo)), /*#__PURE__*/React.createElement("td", {
+    style: _objectSpread(_objectSpread({}, cellBase), {}, {
+      fontWeight: 800,
+      color: "#0369a1"
+    })
+  }, fmt(totals.rev_new + totals.rev_mo + totals.rev_vo)), /*#__PURE__*/React.createElement("td", {
     style: _objectSpread(_objectSpread({}, cellBase), {}, {
       fontWeight: 700
     })
