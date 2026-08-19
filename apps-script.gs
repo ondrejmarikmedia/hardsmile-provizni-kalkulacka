@@ -22,6 +22,8 @@ function doGet(e) {
     body = JSON.stringify(computeCustomers());
   } else if (p.products) {
     body = getProductsAgg();
+  } else if (p.geo) {
+    body = getGeoAgg();
   } else {
     body = PropertiesService.getScriptProperties().getProperty("STATE") || "{}";
   }
@@ -47,6 +49,7 @@ function doPost(e) {
     // Ruční VO seznam se mohl změnit → zneplatni cache agregace, ať se hned projeví.
     try { CacheService.getScriptCache().remove("ORDERS_AGG"); } catch (ce) {}
     try { CacheService.getScriptCache().remove("PRODUCTS_AGG"); } catch (ce2) {}
+    try { CacheService.getScriptCache().remove("GEO_AGG"); } catch (ce3) {}
     return ContentService.createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -72,6 +75,85 @@ function getProductsAgg() {
   if (cached) return cached;
   var json = JSON.stringify(computeProductsAgg());
   try { cache.put("PRODUCTS_AGG", json, 3600); } catch (e) {}
+  return json;
+}
+// ===== Země & měny =====
+// Detekce země z textu dopravy (Shoptet píše u zahraničních objednávek zemi do názvu dopravy).
+function detectCountry(shipText) {
+  var t = String(shipText || "");
+  if (/\bSK\b/.test(t) || /slovensk/i.test(t)) return "SK";
+  if (/\bPL\b/.test(t) || /polsk|poland/i.test(t)) return "PL";
+  if (/\bDE\b/.test(t) || /německo|germany|deutschland/i.test(t)) return "DE";
+  if (/\bAT\b/.test(t) || /rakous|austria/i.test(t)) return "AT";
+  if (/\bHU\b/.test(t) || /maďar|hungary/i.test(t)) return "HU";
+  return null; // neurčeno → bereme jako CZ
+}
+// Měna podle země (hlavní e-shop je CZ/CZK, zahraniční objednávky jsou v EUR).
+function currencyForCountry(cc) { return cc === "CZ" ? "CZK" : "EUR"; }
+function countryName(cc) {
+  return ({ CZ: "Česko", SK: "Slovensko", PL: "Polsko", DE: "Německo", AT: "Rakousko", HU: "Maďarsko" })[cc] || cc;
+}
+// Agregace objednávek podle země a měny (obrat je v nativní měně objednávky).
+function computeGeoAgg() {
+  var text = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true }).getContentText("windows-1250");
+  var rows = parseCsvAll(text);
+  if (!rows.length) return {};
+  var header = rows[0].map(function (h) { return h.trim(); });
+  var col = {};
+  header.forEach(function (h, i) { col[h] = i; });
+  var idc = col["id"], datec = col["date"], statusc = col["statusName"], emailc = col["email"], pricec = col["totalPriceWithoutVat"], typec = col["orderItemType"], namec = col["orderItemName"];
+  var byId = {};
+  for (var i = 1; i < rows.length; i++) {
+    var f = rows[i];
+    var id = f[idc];
+    if (!id) continue;
+    if (!byId[id]) {
+      var status = f[statusc] || "";
+      byId[id] = {
+        date: f[datec] || "", email: (f[emailc] || "").toLowerCase(), price: num(f[pricec]),
+        storno: /storn|zrušen|vrácen|refund/i.test(status), country: null
+      };
+    }
+    if (typec != null && f[typec] === "shipping") {
+      var c = detectCountry(f[namec] || "");
+      if (c) byId[id].country = c;
+    }
+  }
+  var agg = {};
+  Object.keys(byId).forEach(function (id) {
+    var o = byId[id];
+    if (o.storno || o.date.length < 7) return;
+    var cc = o.country || "CZ";
+    if (!agg[cc]) agg[cc] = { country: cc, name: countryName(cc), currency: currencyForCountry(cc), orders: 0, revenue: 0, emails: {}, months: {} };
+    var a = agg[cc];
+    a.orders++;
+    a.revenue += o.price;
+    if (o.email) a.emails[o.email] = 1;
+    var ym = o.date.substring(0, 7);
+    if (!a.months[ym]) a.months[ym] = { orders: 0, revenue: 0 };
+    a.months[ym].orders++;
+    a.months[ym].revenue += o.price;
+  });
+  var out = {};
+  Object.keys(agg).forEach(function (cc) {
+    var a = agg[cc];
+    var cust = Object.keys(a.emails).length;
+    out[cc] = {
+      country: cc, name: a.name, currency: a.currency,
+      orders: a.orders, revenue: Math.round(a.revenue * 100) / 100, customers: cust,
+      aov: a.orders ? Math.round(a.revenue / a.orders * 100) / 100 : 0,
+      ordersPerCustomer: cust ? Math.round(a.orders / cust * 100) / 100 : 0,
+      months: a.months
+    };
+  });
+  return out;
+}
+function getGeoAgg() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get("GEO_AGG");
+  if (cached) return cached;
+  var json = JSON.stringify(computeGeoAgg());
+  try { cache.put("GEO_AGG", json, 3600); } catch (e) {}
   return json;
 }
 // Zařazení produktu podle názvu. null = vynechat (tip pro skladníka, členství).
