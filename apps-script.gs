@@ -357,9 +357,9 @@ function effectiveGroup(email, grpName, ctx) {
   return (ctx.groupOverride[email] != null) ? ctx.groupOverride[email] : (grpName || "");
 }
 
-// Je skupina velkoobchodní (VO / Velkoobchod / VIP)?
+// Je skupina velkoobchodní (VO / Velkoobchod / VIP / osobní)?
 function isVoGroup(g) {
-  return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g);
+  return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g) || /osobn/i.test(g);
 }
 
 // Zařadí objednávku/zákazníka do NEW/MO/VO. Priorita: ruční třída → stav VIP → skupina VO(vč. VIP) → seznam(MO) → NEW.
@@ -393,9 +393,9 @@ function computeOrdersAgg() {
     if (cls === "VO") { agg[ym].rev_vo += o.price; agg[ym].cnt_vo++; }
     else if (cls === "MO") { agg[ym].rev_mo += o.price; agg[ym].cnt_mo++; }
     else { agg[ym].rev_new += o.price; agg[ym].cnt_new++; }
-    // VIP = podmnožina VO: stav objednávky "VIP-Datbáze" NEBO zákaznická skupina VIP (vč. ručního přepisu).
+    // VIP = podmnožina VO: stav objednávky "VIP-Datbáze" NEBO zákaznická skupina VIP / osobní (vč. ručního přepisu).
     var gEff = effectiveGroup(o.email, o.grpName, ctx);
-    if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff)) { agg[ym].rev_vip += o.price; agg[ym].cnt_vip++; }
+    if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { agg[ym].rev_vip += o.price; agg[ym].cnt_vip++; }
     // Repetiv (podle poznámky) – jen informativní rozpad, objednávky zůstávají ve své třídě (typicky NEW).
     if (/repetiv/i.test(o.note)) { agg[ym].rev_rep += o.price; agg[ym].cnt_rep++; }
   });

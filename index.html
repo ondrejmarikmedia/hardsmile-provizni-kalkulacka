@@ -1202,7 +1202,7 @@ function FixedCostEditor(_ref4) {
   }, "Repetiv (dynamicky): 1290 + 2 % z Repetiv tr\u017Eeb (", fmt(repetivRev || 0), " K\u010D) = ", /*#__PURE__*/React.createElement("strong", { style: { color: "#7c3aed" } }, fmt(repetivAmount || 0), " K\u010D")));
 }
 var CLS_COLORS = { NEW: "#1d4ed8", MO: "#f97316", VO: "#7c3aed" };
-var SHOPTET_GROUPS = ["", "Koncový zákazník", "VIP", "VO 10", "VO  30", "VO 35", "Velkoobchodní odběratel"];
+var SHOPTET_GROUPS = ["", "Koncový zákazník", "VIP", "osobní", "VO 10", "VO  30", "VO 35", "Velkoobchodní odběratel"];
 function CustomerTable(_ref5) {
   var storeUrl = _ref5.storeUrl,
     overrides = _ref5.overrides,
@@ -1229,7 +1229,7 @@ function CustomerTable(_ref5) {
     }, "📋 Datab\xE1ze z\xE1kazn\xEDků"));
   }
   var effGroup = function (r) { return (groupOverrides && groupOverrides[r.email] != null) ? groupOverrides[r.email] : (r.grpName || ""); };
-  var isVoG = function (g) { return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g); };
+  var isVoG = function (g) { return /^VO/i.test(g) || /elkoobchod/i.test(g) || /VIP/i.test(g) || /osobn/i.test(g); };
   var eff = function (r) {
     if (overrides[r.email]) return overrides[r.email];
     if (isVoG(effGroup(r))) return "VO";
