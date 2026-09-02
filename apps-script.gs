@@ -130,9 +130,10 @@ function computeGeoAgg() {
     a.revenue += o.price;
     if (o.email) a.emails[o.email] = 1;
     var ym = o.date.substring(0, 7);
-    if (!a.months[ym]) a.months[ym] = { orders: 0, revenue: 0 };
+    if (!a.months[ym]) a.months[ym] = { orders: 0, revenue: 0, emails: {} };
     a.months[ym].orders++;
     a.months[ym].revenue += o.price;
+    if (o.email) a.months[ym].emails[o.email] = 1;
   });
   var out = {};
   Object.keys(agg).forEach(function (cc) {
@@ -143,7 +144,7 @@ function computeGeoAgg() {
       orders: a.orders, revenue: Math.round(a.revenue * 100) / 100, customers: cust,
       aov: a.orders ? Math.round(a.revenue / a.orders * 100) / 100 : 0,
       ordersPerCustomer: cust ? Math.round(a.orders / cust * 100) / 100 : 0,
-      months: a.months
+      months: (function (mm) { var mo = {}; Object.keys(mm).forEach(function (ym) { var x = mm[ym]; var mc = Object.keys(x.emails || {}).length; mo[ym] = { orders: x.orders, revenue: Math.round(x.revenue * 100) / 100, customers: mc, aov: x.orders ? Math.round(x.revenue / x.orders * 100) / 100 : 0, ordersPerCustomer: mc ? Math.round(x.orders / mc * 100) / 100 : 0 }; }); return mo; })(a.months)
     };
   });
   return out;

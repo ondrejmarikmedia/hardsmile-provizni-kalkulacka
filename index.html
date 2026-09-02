@@ -1652,6 +1652,13 @@ function AnalyticsPage(props) {
     };
     var base = run(sel.rev_new || 0, sel.rev_mo || 0, sel.rev_vo || 0, sel.ad_cost || 0, monthFixedFor(sel.month) || 0, MARGIN, COMMISSION_RATE, !!includeVoCredits);
     var cur = run(simRn, simRm, simRv, simAd, simFixAbs, simMargin, simComm, simVo);
+    // Cíl PNO: dopočítá Ad costs tak, aby PNO odpovídalo (fixní a obraty drží). PNO = (kredity+fixní)/NEW.
+    var setPnoTarget = function (p) {
+      var cd = simRn + simRm + (simVo ? simRv : 0), cs = cd > 0 ? simRn / cd : 1;
+      var fd = simRn + simRm + simRv, fs = fd > 0 ? simRn / fd : 1, fixni = fs * simFixAbs;
+      var ad = cs > 0 ? (p * simRn - fixni) / cs : 0;
+      setSimAd(Math.max(0, Math.round(ad)));
+    };
     var moneyMax = function (b) { return Math.max(Math.ceil((b || 0) * 2 / 1000) * 1000, 50000); };
     // Kombinovaný ovladač: posuvník + číselný vstup (synchronizované). isPct → hodnota 0–1, zobrazená v %.
     var ctrl = function (label, val, setter, min, max, step, isPct) {
@@ -1683,6 +1690,7 @@ function AnalyticsPage(props) {
             ctrl("Fixní náklady (Kč)", simFixAbs, setSimFixAbs, 0, moneyMax(monthFixedFor(sel.month)), 100),
             ctrl("Marže (%)", simMargin, setSimMargin, 0.3, 1, 0.01, true),
             ctrl("Provize (%)", simComm, setSimComm, 0.1, 0.8, 0.01, true),
+            ctrl("PNO — cíl (%)", cur.pno, setPnoTarget, 0.05, 0.8, 0.005, true),
             h("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#374151", margin: "0 0 10px", cursor: "pointer" } },
               h("input", { type: "checkbox", checked: simVo, onChange: function (e) { setSimVo(e.target.checked); } }), "VO v kreditech"),
             h("button", { onClick: _resetSim, style: { padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "↺ Reset na skutečnost")),
@@ -1744,6 +1752,7 @@ function GeoPage(props) {
   var h = React.createElement;
   var storeUrl = props.storeUrl;
   var _g = useState(null), agg = _g[0], setAgg = _g[1];
+  var _sm = useState("ALL"), selM = _sm[0], setSelM = _sm[1];
   useEffect(function () {
     if (agg !== null || !storeUrl) return;
     fetch(storeUrl + (storeUrl.indexOf("?") >= 0 ? "&" : "?") + "geo=1")
@@ -1760,10 +1769,35 @@ function GeoPage(props) {
   var codes = Object.keys(agg).filter(function (c) { return agg[c] && typeof agg[c].orders === "number"; }).sort(function (a, b) { return agg[b].orders - agg[a].orders; });
   if (!codes.length) return card("Země & měny", "Zatím žádná data. (Zahraniční objednávky se rozpoznají z dopravy; možná je potřeba znovu nasadit backend.)", null);
   var col = function (cc) { return COUNTRY_COLORS[cc] || "#6b7280"; };
-  var totalOrders = codes.reduce(function (s, c) { return s + agg[c].orders; }, 0);
+
+  // Měsíce napříč zeměmi + pohled: "ALL" = celé období, jinak konkrétní měsíc.
+  var allMonths = (function () { var s = {}; codes.forEach(function (c) { Object.keys(agg[c].months || {}).forEach(function (m) { s[m] = 1; }); }); return Object.keys(s).sort(); })();
+  var isAll = selM === "ALL" || allMonths.indexOf(selM) < 0;
+  var MN = ["", "led", "úno", "bře", "dub", "kvě", "čer", "črc", "srp", "zář", "říj", "lis", "pro"];
+  var monLabel = function (ym) { return MN[parseInt(ym.substring(5, 7), 10)] + " " + ym.substring(0, 4); };
+  // Statistiky země pro aktuální pohled (celé období vs. konkrétní měsíc).
+  var view = function (c) {
+    var g = agg[c];
+    if (isAll) return { name: g.name, currency: g.currency, orders: g.orders, revenue: g.revenue, customers: g.customers, aov: g.aov, ordersPerCustomer: g.ordersPerCustomer };
+    var m = (g.months || {})[selM] || { orders: 0, revenue: 0 };
+    return { name: g.name, currency: g.currency, orders: m.orders || 0, revenue: m.revenue || 0,
+      customers: (m.customers != null ? m.customers : null),
+      aov: (m.aov != null ? m.aov : (m.orders ? Math.round(m.revenue / m.orders * 100) / 100 : 0)),
+      ordersPerCustomer: (m.ordersPerCustomer != null ? m.ordersPerCustomer : null) };
+  };
+  var vcodes = codes.filter(function (c) { return isAll || view(c).orders > 0; }).sort(function (a, b) { return view(b).orders - view(a).orders; });
+  var totalOrders = vcodes.reduce(function (s, c) { return s + view(c).orders; }, 0);
+  var scopeLabel = isAll ? "celé období" : monLabel(selM);
+  var custTxt = function (n) { return n == null ? "—" : fmt(n); };
+
+  var monthPicker = h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" } },
+    h("span", { style: { fontSize: 13, fontWeight: 700, color: "#374151" } }, "Období:"),
+    h("select", { value: isAll ? "ALL" : selM, onChange: function (e) { setSelM(e.target.value); }, style: { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, fontWeight: 600 } },
+      [h("option", { key: "ALL", value: "ALL" }, "Celé období")].concat(allMonths.slice().reverse().map(function (m) { return h("option", { key: m, value: m }, monLabel(m)); }))),
+    h("span", { style: { fontSize: 12, color: "#9ca3af" } }, "Zobrazeno: " + scopeLabel));
 
   var byCur = {};
-  codes.forEach(function (c) { var g = agg[c], k = g.currency; if (!byCur[k]) byCur[k] = { currency: k, orders: 0, revenue: 0, customers: 0, countries: [] }; byCur[k].orders += g.orders; byCur[k].revenue += g.revenue; byCur[k].customers += g.customers; byCur[k].countries.push(g.name); });
+  vcodes.forEach(function (c) { var g = view(c), k = g.currency; if (!byCur[k]) byCur[k] = { currency: k, orders: 0, revenue: 0, customers: 0, countries: [] }; byCur[k].orders += g.orders; byCur[k].revenue += g.revenue; byCur[k].customers += (g.customers || 0); byCur[k].countries.push(g.name); });
   var curKeys = Object.keys(byCur);
   var curCards = h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } }, curKeys.map(function (k) {
     var b = byCur[k];
@@ -1782,40 +1816,39 @@ function GeoPage(props) {
       h("th", { style: Object.assign({}, thc, { textAlign: "left" }) }, "Země"),
       h("th", { style: thc }, "Měna"), h("th", { style: thc }, "Objednávky"), h("th", { style: thc }, "Podíl obj."),
       h("th", { style: thc }, "Obrat"), h("th", { style: thc }, "Zákazníci"), h("th", { style: thc }, "AOV"), h("th", { style: thc }, "Obj./zák."))),
-    h("tbody", null, codes.map(function (c) {
-      var g = agg[c];
+    h("tbody", null, vcodes.map(function (c) {
+      var g = view(c);
       return h("tr", { key: c },
         h("td", { style: Object.assign({}, tdc, { textAlign: "left", fontWeight: 700 }) }, h("span", { style: { display: "inline-block", width: 9, height: 9, borderRadius: 2, background: col(c), marginRight: 6 } }), g.name),
         h("td", { style: tdc }, g.currency),
         h("td", { style: Object.assign({}, tdc, { fontWeight: 700 }) }, fmt(g.orders)),
         h("td", { style: tdc }, (totalOrders ? Math.round(g.orders / totalOrders * 100) : 0) + " %"),
         h("td", { style: Object.assign({}, tdc, { fontWeight: 700, color: "#059669" }) }, fmt(g.revenue) + " " + g.currency),
-        h("td", { style: tdc }, fmt(g.customers)),
+        h("td", { style: tdc }, custTxt(g.customers)),
         h("td", { style: tdc }, fmt(g.aov) + " " + g.currency),
-        h("td", { style: tdc }, g.ordersPerCustomer));
+        h("td", { style: tdc }, g.ordersPerCustomer == null ? "—" : g.ordersPerCustomer));
     }))));
 
-  var pieData = codes.map(function (c) { return { label: agg[c].name, value: agg[c].orders, color: col(c) }; });
+  var pieData = vcodes.map(function (c) { return { label: view(c).name, value: view(c).orders, color: col(c) }; });
   var pie = h("div", { style: { display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" } },
     h(PieChart, { data: pieData, size: 180, centerLabel: fmt(totalOrders), centerSub: "objednávek" }),
-    h("div", null, codes.map(function (c) {
+    h("div", null, vcodes.map(function (c) {
+      var g = view(c);
       return h("div", { key: c, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginBottom: 4 } },
         h("span", { style: { width: 10, height: 10, borderRadius: 2, background: col(c), display: "inline-block" } }),
-        h("span", { style: { fontWeight: 600 } }, agg[c].name), h("span", { style: { color: "#9ca3af" } }, fmt(agg[c].orders) + " obj. · " + (totalOrders ? Math.round(agg[c].orders / totalOrders * 100) : 0) + " %"));
+        h("span", { style: { fontWeight: 600 } }, g.name), h("span", { style: { color: "#9ca3af" } }, fmt(g.orders) + " obj. · " + (totalOrders ? Math.round(g.orders / totalOrders * 100) : 0) + " %"));
     })));
 
-  var maxAov = Math.max.apply(null, codes.map(function (c) { return agg[c].aov; }).concat([1]));
-  var aovBars = h("div", null, codes.map(function (c) {
-    var g = agg[c];
+  var maxAov = Math.max.apply(null, vcodes.map(function (c) { return view(c).aov; }).concat([1]));
+  var aovBars = h("div", null, vcodes.map(function (c) {
+    var g = view(c);
     return h("div", { key: c, style: { marginBottom: 10 } },
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 } }, h("span", { style: { fontWeight: 600 } }, g.name), h("span", null, fmt(g.aov) + " " + g.currency)),
       h("div", { style: { background: "#f1f5f9", borderRadius: 6, height: 10 } }, h("div", { style: { width: (g.aov / maxAov * 100) + "%", background: col(c), height: "100%", borderRadius: 6 } })));
   }));
 
-  var monthsSet = {};
-  codes.forEach(function (c) { Object.keys(agg[c].months || {}).forEach(function (m) { monthsSet[m] = 1; }); });
-  var months = Object.keys(monthsSet).sort();
-  var trendData = months.map(function (m) {
+  // Trend VŽDY za celé období (zachovává delší pohled bez ohledu na výběr měsíce).
+  var trendData = allMonths.map(function (m) {
     var row = { label: m.substring(5) + "/" + m.substring(2, 4) };
     codes.forEach(function (c) { row[c] = (agg[c].months[m] || {}).orders || 0; });
     return row;
@@ -1823,12 +1856,13 @@ function GeoPage(props) {
   var trendLines = codes.map(function (c) { return { key: c, color: col(c), label: c }; });
 
   return h("div", null,
-    card("Měnové výsledky", "Souhrn podle měny — obrat je v nativní měně objednávek", curCards),
-    card("Porovnání zemí", "Objednávky, obrat, zákazníci a efektivita podle země", table),
+    monthPicker,
+    card("Měnové výsledky", "Souhrn podle měny — obrat je v nativní měně objednávek (" + scopeLabel + ")", curCards),
+    card("Porovnání zemí", "Objednávky, obrat, zákazníci a efektivita podle země (" + scopeLabel + ")", table),
     h("div", { style: { display: "flex", gap: 16, flexWrap: "wrap" } },
-      h("div", { style: { flex: "1 1 340px" } }, card("Podíl objednávek podle země", null, pie)),
-      h("div", { style: { flex: "1 1 300px" } }, card("Průměrná hodnota objednávky (AOV)", "Efektivita — vyšší je lepší", aovBars))),
-    card("Objednávky v čase podle země", "Vývoj počtu objednávek po měsících", h("div", { style: { overflowX: "auto" } }, h(MiniLineChart, { data: trendData, lines: trendLines, width: 640, height: 200 }))));
+      h("div", { style: { flex: "1 1 340px" } }, card("Podíl objednávek podle země (" + scopeLabel + ")", null, pie)),
+      h("div", { style: { flex: "1 1 300px" } }, card("Průměrná hodnota objednávky (AOV, " + scopeLabel + ")", "Efektivita — vyšší je lepší", aovBars))),
+    card("Objednávky v čase podle země", "Vývoj počtu objednávek po měsících (vždy celé období)", h("div", { style: { overflowX: "auto" } }, h(MiniLineChart, { data: trendData, lines: trendLines, width: 640, height: 200 }))));
 }
 function App() {
   var _useState = useState(false),
