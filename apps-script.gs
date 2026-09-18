@@ -308,6 +308,10 @@ function parseCsvAll(text) {
   return rows;
 }
 
+// Množina VŠECH id v posledním feedu (vč. storn) – aby šlo poznat, že objednávka z feedu úplně
+// zmizela (ne že se jen stala stornem). Naplní ji fetchOrders().
+var FETCH_SEEN_IDS = {};
+
 // Stáhne export a vrátí 1 řádek na objednávku (deduplikováno podle id).
 function fetchOrders() {
   var text = UrlFetchApp.fetch(SHOPTET_ORDERS_URL, { muteHttpExceptions: true }).getContentText("windows-1250");
@@ -339,6 +343,7 @@ function fetchOrders() {
       note: (noteCol >= 0 ? (f[noteCol] || "") : "")
     });
   }
+  FETCH_SEEN_IDS = seenId;   // všechna id z feedu (i storna) pro detekci úplně zmizelých objednávek
   return orders;
 }
 
@@ -382,57 +387,92 @@ function loadClassCtx() {
   return { seznam: loadSeznam(), voManual: loadManualVO(), classOverride: loadClassOverride(), groupOverride: loadGroupOverride() };
 }
 
-// Trvalá paměť Repetiv objednávek podle id. Shoptet značku "Repetiv" v poznámce (shopRemark)
-// po čase ze starších objednávek SMAŽE, takže by živý přepočet Repetiv „ztratil". Jakmile
-// objednávku jednou vidíme jako Repetiv, uložíme si její id do STATE.repetivIds a počítáme ji
-// dál i po zmizení značky. Uloženo jako objekt { "id": true }.
-function loadRepetivIds() {
-  var m = {};
-  try {
-    var state = JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}");
-    var r = state.repetivIds || {};
-    if (r instanceof Array) { r.forEach(function (id) { m[String(id)] = true; }); }
-    else { Object.keys(r).forEach(function (id) { if (r[id]) m[String(id)] = true; }); }
-  } catch (e) {}
-  return m;
+// Trvalá paměť Repetiv objednávek (celá data podle id). Shoptet značku "Repetiv" v shopRemark po
+// čase maže a takové objednávky občas z exportu úplně vypadnou (změna stavu / smazání). Aby se
+// Repetiv tržby neztrácely, backend si objednávku při prvním spatření zapamatuje a u ŽIVÝCH
+// (nezamčených) měsíců ji dopočítá i když v aktuálním feedu chybí. Zamčené měsíce mají data ve
+// snapshotu, proto se z paměti průběžně čistí (STATE má limit 9 kB).
+// Formát: STATE.repetivOrders = { "id": { d:"YYYY-MM-DD", p:cena, e:email, g:grpName, t:grpType, s:status } }.
+function loadRepetivOrders() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}").repetivOrders || {}; }
+  catch (e) { return {}; }
 }
-function saveRepetivIds(idSet) {
+function saveRepetivOrders(map) {
   try {
     var props = PropertiesService.getScriptProperties();
     var state = {};
     try { state = JSON.parse(props.getProperty("STATE") || "{}"); } catch (e) { state = {}; }
-    state.repetivIds = idSet;
+    state.repetivOrders = map;
     props.setProperty("STATE", JSON.stringify(state));
   } catch (e) {}
+}
+function loadFrozenSet() {
+  var s = {};
+  try {
+    var f = (JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}").frozen) || {};
+    Object.keys(f).forEach(function (k) { s[k] = true; });
+  } catch (e) {}
+  return s;
 }
 
 function computeOrdersAgg() {
   var ctx = loadClassCtx();
   var orders = fetchOrders();
-  var repIds = loadRepetivIds();
-  var repNew = false;
+  var memory = loadRepetivOrders();     // zapamatované Repetiv objednávky (celá data)
+  var frozenSet = loadFrozenSet();      // zamčené měsíce – ty mají data ve snapshotu
+  var changed = false;
   var agg = {};
+  function ensure(ym) {
+    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, rev_vip: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, cnt_vip: 0, rev_rep: 0, cnt_rep: 0 };
+    return agg[ym];
+  }
+  function addToClass(b, cls, price) {
+    if (cls === "VO") { b.rev_vo += price; b.cnt_vo++; }
+    else if (cls === "MO") { b.rev_mo += price; b.cnt_mo++; }
+    else { b.rev_new += price; b.cnt_new++; }
+  }
   orders.forEach(function (o) {
     if (o.date.length < 7) return;
     var ym = o.date.substring(0, 7);
-    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, rev_vip: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, cnt_vip: 0, rev_rep: 0, cnt_rep: 0 };
+    var b = ensure(ym);
     var cls = classify(o.email, o.grpType, o.grpName, ctx, o.status);
-    if (cls === "VO") { agg[ym].rev_vo += o.price; agg[ym].cnt_vo++; }
-    else if (cls === "MO") { agg[ym].rev_mo += o.price; agg[ym].cnt_mo++; }
-    else { agg[ym].rev_new += o.price; agg[ym].cnt_new++; }
-    // VIP = podmnožina VO: stav objednávky "VIP-Datbáze" NEBO zákaznická skupina VIP / osobní (vč. ručního přepisu).
+    addToClass(b, cls, o.price);
+    // VIP = podmnožina VO: stav objednávky "VIP-Datbáze" NEBO zákaznická skupina VIP / osobní.
     var gEff = effectiveGroup(o.email, o.grpName, ctx);
-    if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { agg[ym].rev_vip += o.price; agg[ym].cnt_vip++; }
-    // Repetiv (podle poznámky) – jen informativní rozpad, objednávky zůstávají ve své třídě (typicky NEW).
-    // Značka v poznámce časem mizí → počítáme i objednávky zapamatované v repetivIds.
-    var isRep = /repetiv/i.test(o.note) || repIds[o.id];
+    if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { b.rev_vip += o.price; b.cnt_vip++; }
+    // Repetiv detekce z feedu: poznámka obsahuje "repetiv" NEBO už je v paměti (značka mohla zmizet).
+    var isRep = /repetiv/i.test(o.note) || memory[o.id];
     if (isRep) {
-      agg[ym].rev_rep += o.price; agg[ym].cnt_rep++;
-      if (!repIds[o.id]) { repIds[o.id] = true; repNew = true; }
+      b.rev_rep += o.price; b.cnt_rep++;
+      // zapamatuj (jen živé měsíce; zamčené mají snapshot)
+      if (!frozenSet[ym] && !memory[o.id]) {
+        memory[o.id] = { d: o.date.substring(0, 10), p: o.price, e: o.email, g: o.grpName, t: o.grpType, s: o.status };
+        changed = true;
+      }
     }
   });
-  // Nově zahlédnutá Repetiv id ulož natrvalo (běží jen při cache-miss, tj. max 1×/hod).
-  if (repNew) saveRepetivIds(repIds);
+  // Dopočítej zapamatované Repetiv objednávky, které v aktuálním feedu ÚPLNĚ chybí (ani jako storno)
+  // a jejich měsíc není zamčený – tím se neztratí tržby smazané/odfiltrované ze Shoptetu.
+  Object.keys(memory).forEach(function (id) {
+    if (FETCH_SEEN_IDS[id]) return;             // je ve feedu (příp. jako storno) → neduplikovat
+    var r = memory[id];
+    if (!r || !r.d || r.d.length < 7) return;
+    var ym = r.d.substring(0, 7);
+    if (frozenSet[ym]) return;                  // zamčený měsíc má data ve snapshotu
+    var b = ensure(ym);
+    var cls = classify(r.e, r.t, r.g, ctx, r.s);
+    addToClass(b, cls, r.p);
+    var gEff = effectiveGroup(r.e, r.g, ctx);
+    if (/VIP/i.test(r.s || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { b.rev_vip += r.p; b.cnt_vip++; }
+    b.rev_rep += r.p; b.cnt_rep++;
+  });
+  // Úklid: zapomeň zapamatované objednávky ze zamčených měsíců (snapshot je pokrývá) → STATE zůstává malý.
+  Object.keys(memory).forEach(function (id) {
+    var r = memory[id];
+    var ym = (r && r.d) ? r.d.substring(0, 7) : "";
+    if (!ym || frozenSet[ym]) { delete memory[id]; changed = true; }
+  });
+  if (changed) saveRepetivOrders(memory);
   return agg;
 }
 
