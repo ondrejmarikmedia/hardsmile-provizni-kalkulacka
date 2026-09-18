@@ -423,7 +423,7 @@ function computeOrdersAgg() {
   var changed = false;
   var agg = {};
   function ensure(ym) {
-    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, rev_vip: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, cnt_vip: 0, rev_rep: 0, cnt_rep: 0 };
+    if (!agg[ym]) agg[ym] = { rev_new: 0, rev_mo: 0, rev_vo: 0, rev_vip: 0, rev_osobni: 0, cnt_new: 0, cnt_mo: 0, cnt_vo: 0, cnt_vip: 0, cnt_osobni: 0, rev_rep: 0, cnt_rep: 0 };
     return agg[ym];
   }
   function addToClass(b, cls, price) {
@@ -440,6 +440,8 @@ function computeOrdersAgg() {
     // VIP = podmnožina VO: stav objednávky "VIP-Datbáze" NEBO zákaznická skupina VIP / osobní.
     var gEff = effectiveGroup(o.email, o.grpName, ctx);
     if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { b.rev_vip += o.price; b.cnt_vip++; }
+    // Skupina "osobní" (samostatný rozpad pro graf; je podmnožinou VO i rev_vip).
+    if (/osobn/i.test(gEff)) { b.rev_osobni += o.price; b.cnt_osobni++; }
     // Repetiv detekce z feedu: poznámka obsahuje "repetiv" NEBO už je v paměti (značka mohla zmizet).
     var isRep = /repetiv/i.test(o.note) || memory[o.id];
     if (isRep) {
@@ -464,13 +466,18 @@ function computeOrdersAgg() {
     addToClass(b, cls, r.p);
     var gEff = effectiveGroup(r.e, r.g, ctx);
     if (/VIP/i.test(r.s || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { b.rev_vip += r.p; b.cnt_vip++; }
+    if (/osobn/i.test(gEff)) { b.rev_osobni += r.p; b.cnt_osobni++; }
     b.rev_rep += r.p; b.cnt_rep++;
   });
-  // Úklid: zapomeň zapamatované objednávky ze zamčených měsíců (snapshot je pokrývá) → STATE zůstává malý.
+  // Úklid paměti PODLE DATA (ne podle zámku): drž jen poslední ~3 měsíce, ať re-seed přežije
+  // i u zamčeného měsíce a STATE zůstává malý (limit 9 kB).
+  var _n = new Date();
+  var _cut = new Date(_n.getFullYear(), _n.getMonth() - 2, 1);
+  var cutYm = _cut.getFullYear() + "-" + ("0" + (_cut.getMonth() + 1)).slice(-2);
   Object.keys(memory).forEach(function (id) {
     var r = memory[id];
     var ym = (r && r.d) ? r.d.substring(0, 7) : "";
-    if (!ym || frozenSet[ym]) { delete memory[id]; changed = true; }
+    if (!ym || ym < cutYm) { delete memory[id]; changed = true; }
   });
   if (changed) saveRepetivOrders(memory);
   return agg;
