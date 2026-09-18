@@ -382,9 +382,35 @@ function loadClassCtx() {
   return { seznam: loadSeznam(), voManual: loadManualVO(), classOverride: loadClassOverride(), groupOverride: loadGroupOverride() };
 }
 
+// Trvalá paměť Repetiv objednávek podle id. Shoptet značku "Repetiv" v poznámce (shopRemark)
+// po čase ze starších objednávek SMAŽE, takže by živý přepočet Repetiv „ztratil". Jakmile
+// objednávku jednou vidíme jako Repetiv, uložíme si její id do STATE.repetivIds a počítáme ji
+// dál i po zmizení značky. Uloženo jako objekt { "id": true }.
+function loadRepetivIds() {
+  var m = {};
+  try {
+    var state = JSON.parse(PropertiesService.getScriptProperties().getProperty("STATE") || "{}");
+    var r = state.repetivIds || {};
+    if (r instanceof Array) { r.forEach(function (id) { m[String(id)] = true; }); }
+    else { Object.keys(r).forEach(function (id) { if (r[id]) m[String(id)] = true; }); }
+  } catch (e) {}
+  return m;
+}
+function saveRepetivIds(idSet) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var state = {};
+    try { state = JSON.parse(props.getProperty("STATE") || "{}"); } catch (e) { state = {}; }
+    state.repetivIds = idSet;
+    props.setProperty("STATE", JSON.stringify(state));
+  } catch (e) {}
+}
+
 function computeOrdersAgg() {
   var ctx = loadClassCtx();
   var orders = fetchOrders();
+  var repIds = loadRepetivIds();
+  var repNew = false;
   var agg = {};
   orders.forEach(function (o) {
     if (o.date.length < 7) return;
@@ -398,8 +424,15 @@ function computeOrdersAgg() {
     var gEff = effectiveGroup(o.email, o.grpName, ctx);
     if (/VIP/i.test(o.status || "") || /VIP/i.test(gEff) || /osobn/i.test(gEff)) { agg[ym].rev_vip += o.price; agg[ym].cnt_vip++; }
     // Repetiv (podle poznámky) – jen informativní rozpad, objednávky zůstávají ve své třídě (typicky NEW).
-    if (/repetiv/i.test(o.note)) { agg[ym].rev_rep += o.price; agg[ym].cnt_rep++; }
+    // Značka v poznámce časem mizí → počítáme i objednávky zapamatované v repetivIds.
+    var isRep = /repetiv/i.test(o.note) || repIds[o.id];
+    if (isRep) {
+      agg[ym].rev_rep += o.price; agg[ym].cnt_rep++;
+      if (!repIds[o.id]) { repIds[o.id] = true; repNew = true; }
+    }
   });
+  // Nově zahlédnutá Repetiv id ulož natrvalo (běží jen při cache-miss, tj. max 1×/hod).
+  if (repNew) saveRepetivIds(repIds);
   return agg;
 }
 
