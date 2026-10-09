@@ -1318,7 +1318,8 @@ function CustomerTable(_ref5) {
 }
 // ===== Dynamické měsíce – DATA se sestavují ze živých zdrojů (ad costs + Shoptet) =====
 var BASE_DATA = DATA;            // původní ručně zadané měsíce (autoritativní historie)
-var AD_BY_MONTH = {};            // ad costs po měsících (z reklamního sheetu)
+var AD_BY_MONTH = {};            // ad costs po měsících (z reklamního sheetu) – jen web hardsmile.cz
+var AURA_BY_MONTH = {};          // Aura Woman: cost import po měsících (sloupec web = aura…)
 var ORDERS_AGG = {};             // obrat po měsících (ze Shoptetu)
 var FROZEN = {};                 // zamčené měsíce (snapshoty) – řídí zámek i přepočet v UI
 var CS_MONTHS = ["Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"];
@@ -1513,6 +1514,122 @@ function ProductSales(_refPS) {
       : /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 24, flexWrap: "wrap" } },
           pieBlock("Produkty (ks)", "Kolik kusů každ\xE9ho produktu se prodalo", aData, "ks celkem"),
           pieBlock("D\xE1vky po př\xEDchut\xEDch + samostatn\xE9", "D\xE1vky (doplněk) a ks u Kostky/Gel/Olej", bData, "položek")));
+}
+// ===== Aura Woman – marketingová analýza z cost importu (sloupec web) =====
+var AURA_SRC_LABELS = { facebook: "Facebook", google: "Google", seznam: "Seznam", srovname: "Srovn\xE1me/Heureka" };
+var AURA_SRC_COLORS = { facebook: "#1877f2", google: "#ea4335", seznam: "#c8102e", srovname: "#6b7280" };
+function AuraWomanSection() {
+  var h = React.createElement;
+  var _m = useState("ALL"), selM = _m[0], setSelM = _m[1];
+  var MN = ["", "led", "\xFAno", "bře", "dub", "kvě", "čer", "črc", "srp", "z\xE1ř", "ř\xEDj", "lis", "pro"];
+  var monLabel = function (ym) { return MN[parseInt(ym.substring(5, 7), 10)] + " " + ym.substring(0, 4); };
+  var box = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", marginBottom: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.04)" };
+  var card = function (title, sub, body) {
+    return h("div", { style: box },
+      h("h3", { style: { fontSize: 15, fontWeight: 800, color: "#111827", margin: "0 0 2px" } }, title),
+      sub ? h("p", { style: { fontSize: 12, color: "#6b7280", margin: "0 0 12px" } }, sub) : null, body);
+  };
+  var months = Object.keys(AURA_BY_MONTH || {}).filter(function (m) { return m && m.length >= 7; }).sort();
+  var hasData = months.some(function (m) { var a = AURA_BY_MONTH[m]; return a && ((a.cost || 0) > 0 || (a.value || 0) > 0 || (a.conversions || 0) > 0); });
+  if (!months.length || !hasData) {
+    return card("🌸 Aura Woman — prodeje a v\xFDkon",
+      "Kompletn\xED anal\xFDza Aura Woman (n\xE1klady, obrat, konverze, PNO, kan\xE1ly, kampaně, provize) se napln\xED automaticky, jakmile v cost importu přibudou ř\xE1dky se značkou Aura Woman (sloupec „web“).",
+      h("div", { style: { fontSize: 13, color: "#9ca3af", padding: "18px 0", textAlign: "center" } },
+        "Zat\xEDm ž\xE1dn\xE1 data pro Aura Woman v cost importu. Hard Smile data t\xEDm nejsou dotčena."));
+  }
+  var isAll = selM === "ALL" || months.indexOf(selM) < 0;
+  var scopeMonths = isAll ? months : [selM];
+  var agg = { cost: 0, value: 0, conversions: 0, clicks: 0, impressions: 0, bySource: {}, campaigns: {} };
+  scopeMonths.forEach(function (m) {
+    var a = AURA_BY_MONTH[m]; if (!a) return;
+    agg.cost += a.cost || 0; agg.value += a.value || 0; agg.conversions += a.conversions || 0; agg.clicks += a.clicks || 0; agg.impressions += a.impressions || 0;
+    Object.keys(a.bySource || {}).forEach(function (s) { var x = a.bySource[s]; if (!agg.bySource[s]) agg.bySource[s] = { cost: 0, value: 0, conversions: 0, clicks: 0, impressions: 0 }; var d = agg.bySource[s]; d.cost += x.cost || 0; d.value += x.value || 0; d.conversions += x.conversions || 0; d.clicks += x.clicks || 0; d.impressions += x.impressions || 0; });
+    Object.keys(a.campaigns || {}).forEach(function (c) { var x = a.campaigns[c]; if (!agg.campaigns[c]) agg.campaigns[c] = { cost: 0, value: 0, conversions: 0, clicks: 0, impressions: 0 }; var d = agg.campaigns[c]; d.cost += x.cost || 0; d.value += x.value || 0; d.conversions += x.conversions || 0; d.clicks += x.clicks || 0; d.impressions += x.impressions || 0; });
+  });
+  var pno = agg.value > 0 ? agg.cost / agg.value : 0;
+  var cpa = agg.conversions > 0 ? agg.cost / agg.conversions : 0;
+  var ctr = agg.impressions > 0 ? agg.clicks / agg.impressions : 0;
+  var cpc = agg.clicks > 0 ? agg.cost / agg.clicks : 0;
+  var marze = agg.value * MARGIN;
+  var cisty = marze - agg.cost;
+  var provize = Math.max(0, cisty * COMMISSION_RATE);
+  var scopeLabel = isAll ? "cel\xE9 obdob\xED" : monLabel(selM);
+  var picker = h("select", {
+    value: selM, onChange: function (e) { setSelM(e.target.value); },
+    style: { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, fontWeight: 600 }
+  }, [h("option", { key: "ALL", value: "ALL" }, "Cel\xE9 obdob\xED")].concat(months.slice().reverse().map(function (m) { return h("option", { key: m, value: m }, monLabel(m)); })));
+  var kpi = function (label, val, color, sub) {
+    return h("div", { style: { flex: "1 1 150px", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" } },
+      h("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" } }, label),
+      h("div", { style: { fontSize: 20, fontWeight: 800, color: color || "#111827" } }, val),
+      sub ? h("div", { style: { fontSize: 11, color: "#9ca3af", marginTop: 2 } }, sub) : null);
+  };
+  var kpis = h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+    kpi("Obrat (hodnota konv.)", fmt(agg.value) + " Kč", "#0ea5e9"),
+    kpi("Reklamn\xED n\xE1klady", fmt(agg.cost) + " Kč", "#ef4444"),
+    kpi("PNO", fmtPct(pno), "#b45309"),
+    kpi("Konverze", fmt(agg.conversions), "#10b981"),
+    kpi("CPA", agg.conversions > 0 ? fmt(cpa) + " Kč" : "—", "#f59e0b", "n\xE1klad / konverze"),
+    kpi("Prokliky", fmt(agg.clicks), "#2563eb"),
+    kpi("Imprese", fmt(agg.impressions), "#8b5cf6"),
+    kpi("CTR", agg.impressions > 0 ? (ctr * 100).toFixed(2) + " %" : "—", "#6366f1"),
+    kpi("CPC", agg.clicks > 0 ? fmt(cpc) + " Kč" : "—", "#0891b2", "n\xE1klad / proklik"),
+    kpi("Provize (model)", fmt(provize) + " Kč", "#7c3aed", "marže 70 % − n\xE1klady, 40 %"));
+  var th = { textAlign: "right", padding: "6px 8px", fontSize: 11, color: "#6b7280", fontWeight: 700, borderBottom: "2px solid #e5e7eb", textTransform: "uppercase", letterSpacing: "0.3px" };
+  var thL = Object.assign({}, th, { textAlign: "left" });
+  var td = { textAlign: "right", padding: "6px 8px", fontSize: 13, borderBottom: "1px solid #f3f4f6" };
+  var tdL = Object.assign({}, td, { textAlign: "left", fontWeight: 600 });
+  var monthTable = h("div", { style: { overflowX: "auto" } },
+    h("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 560 } },
+      h("thead", null, h("tr", null,
+        h("th", { style: thL }, "Měs\xEDc"), h("th", { style: th }, "N\xE1klady"), h("th", { style: th }, "Obrat"),
+        h("th", { style: th }, "PNO"), h("th", { style: th }, "Konverze"), h("th", { style: th }, "CPA"), h("th", { style: th }, "Provize"))),
+      h("tbody", null, months.slice().reverse().map(function (m) {
+        var a = AURA_BY_MONTH[m]; var p = a.value > 0 ? a.cost / a.value : 0; var cp = a.conversions > 0 ? a.cost / a.conversions : 0;
+        var mz = a.value * MARGIN; var pv = Math.max(0, (mz - a.cost) * COMMISSION_RATE);
+        return h("tr", { key: m, style: (!isAll && m === selM) ? { background: "#fdf2f8" } : null },
+          h("td", { style: tdL }, monLabel(m)), h("td", { style: td }, fmt(a.cost)), h("td", { style: td }, fmt(a.value)),
+          h("td", { style: td }, fmtPct(p)), h("td", { style: td }, fmt(a.conversions)),
+          h("td", { style: td }, a.conversions > 0 ? fmt(cp) : "—"), h("td", { style: td }, fmt(pv)));
+      }))));
+  var srcKeys = Object.keys(agg.bySource).sort(function (x, y) { return agg.bySource[y].cost - agg.bySource[x].cost; });
+  var channelTable = srcKeys.length ? h("div", { style: { overflowX: "auto" } },
+    h("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 480 } },
+      h("thead", null, h("tr", null, h("th", { style: thL }, "Kan\xE1l"), h("th", { style: th }, "N\xE1klady"), h("th", { style: th }, "Obrat"), h("th", { style: th }, "PNO"), h("th", { style: th }, "Konverze"))),
+      h("tbody", null, srcKeys.map(function (s) {
+        var x = agg.bySource[s]; var p = x.value > 0 ? x.cost / x.value : 0;
+        return h("tr", { key: s },
+          h("td", { style: tdL }, h("span", { style: { display: "inline-block", width: 10, height: 10, borderRadius: 2, background: AURA_SRC_COLORS[s] || "#6b7280", marginRight: 6 } }), AURA_SRC_LABELS[s] || s),
+          h("td", { style: td }, fmt(x.cost)), h("td", { style: td }, fmt(x.value)), h("td", { style: td }, fmtPct(p)), h("td", { style: td }, fmt(x.conversions)));
+      })))) : h("div", { style: { fontSize: 12, color: "#9ca3af" } }, "Ž\xE1dn\xE1 data kan\xE1lů.");
+  var campKeys = Object.keys(agg.campaigns).sort(function (x, y) { return agg.campaigns[y].cost - agg.campaigns[x].cost; }).slice(0, 10);
+  var campTable = campKeys.length ? h("div", { style: { overflowX: "auto" } },
+    h("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 560 } },
+      h("thead", null, h("tr", null, h("th", { style: thL }, "Kampaň"), h("th", { style: th }, "N\xE1klady"), h("th", { style: th }, "Obrat"), h("th", { style: th }, "PNO"), h("th", { style: th }, "Konverze"))),
+      h("tbody", null, campKeys.map(function (c) {
+        var x = agg.campaigns[c]; var p = x.value > 0 ? x.cost / x.value : 0;
+        return h("tr", { key: c }, h("td", { style: tdL }, c), h("td", { style: td }, fmt(x.cost)), h("td", { style: td }, fmt(x.value)), h("td", { style: td }, fmtPct(p)), h("td", { style: td }, fmt(x.conversions)));
+      })))) : h("div", { style: { fontSize: 12, color: "#9ca3af" } }, "Ž\xE1dn\xE9 kampaně.");
+  var trend = months.map(function (m) { var a = AURA_BY_MONTH[m]; var p = a.value > 0 ? a.cost / a.value : 0; var mz = a.value * MARGIN; var pv = Math.max(0, (mz - a.cost) * COMMISSION_RATE);
+    return { label: MN[parseInt(m.substring(5, 7), 10)], cost: a.cost, value: a.value, conversions: a.conversions, pno: p, provize: pv }; });
+  var pctFmt = function (v) { return (v * 100).toFixed(0) + " %"; };
+  var spark = function (title, color, key, yf) {
+    return h("div", { style: { flex: "1 1 240px", minWidth: 220 } },
+      h("div", { style: { fontSize: 12, fontWeight: 700, color: color, marginBottom: 2 } }, title),
+      h(MiniLineChart, { data: trend, lines: [{ key: key, color: color, label: "" }], width: 320, height: 130, yFormat: yf }));
+  };
+  return h("div", null,
+    card("🌸 Aura Woman — přehled v\xFDkonu (" + scopeLabel + ")",
+      "Zdroj: cost import (sloupec web). Obrat = hodnota konverz\xED z reklamy. Provize orientačně stejn\xFDm modelem (marže 70 %, 40 % z čist\xE9ho, bez fixn\xEDch n\xE1kladů).",
+      h("div", null, h("div", { style: { marginBottom: 12 } }, h("span", { style: { fontSize: 13, fontWeight: 600, marginRight: 8 } }, "Obdob\xED:"), picker), kpis)),
+    card("Po měs\xEDc\xEDch", "N\xE1klady, obrat, PNO, konverze a provize za každ\xFD měs\xEDc", monthTable),
+    card("Rozpad po kan\xE1lech (" + scopeLabel + ")", "V\xFDkon podle reklamn\xEDho zdroje", channelTable),
+    card("Top kampaně (" + scopeLabel + ")", "Nejn\xE1kladnějš\xED kampaně Aura Woman", campTable),
+    card("Trendy", "V\xFDvoj kl\xEDčov\xFDch metrik po měs\xEDc\xEDch",
+      h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+        spark("N\xE1klady (Kč)", "#ef4444", "cost"), spark("Obrat (Kč)", "#0ea5e9", "value"),
+        spark("PNO (%)", "#b45309", "pno", pctFmt), spark("Konverze", "#10b981", "conversions"),
+        spark("Provize (Kč)", "#7c3aed", "provize"))));
 }
 // ===== Druhý list: Analytika (trendy, waterfall, odhad, simulátor, cíle) =====
 function AnalyticsPage(props) {
@@ -2670,7 +2787,7 @@ function App() {
     storeUrl: SHARED_STORE_URL,
     month: selectedMonthStr,
     monthLabel: selectedMonthLabel
-  }));
+  }), /*#__PURE__*/React.createElement(AuraWomanSection, null));
   }
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3230,19 +3347,40 @@ async function loadFromSheets() {
     console.warn("Nelze načíst ad costs ze Sheets:", e);
   }
 
-  var adByMonth = {};
+  var adByMonth = {};    // Hard Smile (web hardsmile.cz, nebo chybějící web = zpětná kompatibilita)
+  var auraByMonth = {};  // Aura Woman (web obsahuje "aura")
   adRows.forEach(function(r) {
     if (!r.date) return;
     var ym = r.date.substring(0, 7);
     var src = normSource(r.source);
+    var web = (r.web || "").toLowerCase();
+    var cost = parseFloat(r.cost) || 0;
+    var val = parseFloat(r.conversions_value) || 0;
+    var conv = parseFloat(r.conversions) || 0;
+    var clk = parseFloat(r.clicks) || 0;
+    var imp = parseFloat(r.impressions) || 0;
+    if (/aura/.test(web)) {
+      if (!auraByMonth[ym]) auraByMonth[ym] = { cost: 0, value: 0, conversions: 0, clicks: 0, impressions: 0, bySource: {}, campaigns: {} };
+      var a = auraByMonth[ym];
+      a.cost += cost; a.value += val; a.conversions += conv; a.clicks += clk; a.impressions += imp;
+      if (!a.bySource[src]) a.bySource[src] = { cost: 0, value: 0, conversions: 0, clicks: 0, impressions: 0 };
+      var sb = a.bySource[src]; sb.cost += cost; sb.value += val; sb.conversions += conv; sb.clicks += clk; sb.impressions += imp;
+      var cn = ((r.campaign_name || "").trim()) || "(bez n\xE1zvu)";
+      if (!a.campaigns[cn]) a.campaigns[cn] = { cost: 0, value: 0, conversions: 0, clicks: 0, impressions: 0 };
+      var cb = a.campaigns[cn]; cb.cost += cost; cb.value += val; cb.conversions += conv; cb.clicks += clk; cb.impressions += imp;
+      return;
+    }
+    // Hard Smile: beze změny – jen chráníme čísla před jinou značkou (počítáme hardsmile nebo prázdný web).
+    if (web && !/hardsmile/.test(web)) return;
     if (!adByMonth[ym]) adByMonth[ym] = {facebook:{cost:0,value:0},google:{cost:0,value:0},seznam:{cost:0,value:0},srovname:{cost:0,value:0}};
     if (adByMonth[ym][src]) {
-      adByMonth[ym][src].cost += parseFloat(r.cost) || 0;
-      adByMonth[ym][src].value += parseFloat(r.conversions_value) || 0;
+      adByMonth[ym][src].cost += cost;
+      adByMonth[ym][src].value += val;
     }
   });
 
   AD_BY_MONTH = adByMonth;
+  AURA_BY_MONTH = auraByMonth;
 }
 
 (async function init() {
