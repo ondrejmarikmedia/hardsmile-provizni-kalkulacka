@@ -2264,7 +2264,7 @@ function App() {
   var _auth = useState(function () { try { return sessionStorage.getItem("hs_auth") === "1"; } catch (e) { return false; } });
   var authed = _auth[0], setAuthed = _auth[1];
   var _pw = useState(""), pwVal = _pw[0], setPwVal = _pw[1];
-  var tryAuth = function () { if (pwVal === "Hardsmile01") { setAuthed(true); try { sessionStorage.setItem("hs_auth", "1"); } catch (e) {} } else alert("Špatné heslo"); };
+  var tryAuth = function () { if (pwVal === "Hardsmile02") { setAuthed(true); try { sessionStorage.setItem("hs_auth", "1"); } catch (e) {} } else alert("Špatné heslo"); };
   var _saved = useState(false), savedState = _saved[0], setSavedState = _saved[1];
   var doSave = function () { flushShared(); setSavedState(true); setTimeout(function () { setSavedState(false); }, 2000); };
   // Data pro vybraný měsíc (dlaždice v hlavním přehledu ukazují jen tento měsíc).
